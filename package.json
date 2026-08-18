@@ -1,0 +1,20 @@
+{
+  "name": "employee-management-payroll",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Full-stack MERN Employee Management & Payroll System — HR dashboard, attendance, leave management, payroll, performance reviews, reports, and role-based access.",
+  "scripts": {
+    "dev": "node node_modules/concurrently/dist/bin/concurrently.js -n server,client -c green,cyan \"node server/src/index.js\" \"node client/node_modules/vite/bin/vite.js client\"",
+    "dev:server": "node --watch server/src/index.js",
+    "dev:client": "node client/node_modules/vite/bin/vite.js client",
+    "start": "node server/src/index.js",
+    "build": "node client/node_modules/vite/bin/vite.js build client",
+    "seed": "node server/src/seed.js",
+    "lint": "npm run lint --prefix client",
+    "install:all": "npm install && npm install --prefix server && npm install --prefix client"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}
