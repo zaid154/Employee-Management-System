@@ -158,44 +158,59 @@ async function run() {
     demoLogins.push({ email: match.emp.email, password: 'Password@123', role: acc.role });
   }
 
-  // 4. Attendance for the current month (working days up to today)
-  const now = new Date();
-  const monthStart = startOfDay(new Date(now.getFullYear(), now.getMonth(), 1));
+  // 4. Attendance for 9 Oct 2026 — full day records for all 18 employees
+  const oct9 = new Date(2026, 9, 9); // 9 Oct 2026 (Friday)
   const attendanceOps = [];
-  for (const { emp } of employees) {
-    const cursor = new Date(monthStart);
-    while (cursor <= now) {
-      if (!isWeekend(cursor)) {
-        const roll = Math.random();
-        let status = 'present';
-        let checkIn = new Date(cursor);
-        let checkOut = new Date(cursor);
-        let workHours = 0;
-        if (roll < 0.05) {
-          status = 'absent';
-          checkIn = null;
-          checkOut = null;
-        } else {
-          const late = roll > 0.85;
-          status = late ? 'late' : 'present';
-          checkIn.setHours(late ? rand(10, 11) : 9, rand(0, 59), 0, 0);
-          checkOut.setHours(rand(17, 19), rand(0, 59), 0, 0);
-          workHours = Math.round(((checkOut - checkIn) / 3600000) * 100) / 100;
-        }
-        attendanceOps.push({
-          employee: emp._id,
-          date: startOfDay(cursor),
-          checkIn,
-          checkOut,
-          status,
-          workHours,
-        });
-      }
-      cursor.setDate(cursor.getDate() + 1);
+
+  const shiftProfiles = [
+    { inH: 9, inM: 12, outH: 18, outM: 45, status: 'present' }, // Aarav Sharma
+    { inH: 8, inM: 58, outH: 18, outM: 20, status: 'present' }, // Priya Nair
+    { inH: 9, inM: 5,  outH: 19, outM: 15, status: 'present' }, // Vikram Malhotra
+    { inH: 9, inM: 15, outH: 18, outM: 30, status: 'present' }, // Meera Iyer
+    { inH: 9, inM: 0,  outH: 18, outM: 15, status: 'present' }, // Sanjay Patel
+    { inH: 8, inM: 50, outH: 18, outM: 5,  status: 'present' }, // Amit Kumar
+    { inH: 9, inM: 22, outH: 18, outM: 50, status: 'present' }, // Isha Verma
+    { inH: 9, inM: 48, outH: 19, outM: 20, status: 'late' },    // Rohan Mehta (late arrival)
+    { inH: 9, inM: 8,  outH: 18, outM: 12, status: 'present' }, // Neha Gupta
+    { inH: 9, inM: 10, outH: 13, outM: 45, status: 'half-day' },// Karan Singh (half-day)
+    { inH: 9, inM: 2,  outH: 18, outM: 8,  status: 'present' }, // Anjali Rao
+    { inH: 10, inM: 5, outH: 19, outM: 35, status: 'late' },    // Sneha Kapoor (late arrival)
+    { inH: 9, inM: 18, outH: 18, outM: 40, status: 'present' }, // Arjun Reddy
+    { inH: 9, inM: 25, outH: 18, outM: 32, status: 'present' }, // Rahul Joshi
+    { inH: 9, inM: 14, outH: 18, outM: 22, status: 'present' }, // Divya Menon
+    { inH: 8, inM: 55, outH: 18, outM: 10, status: 'present' }, // Pooja Desai
+    { inH: 9, inM: 4,  outH: 18, outM: 18, status: 'present' }, // Ritu Chauhan
+    { inH: null, inM: null, outH: null, outM: null, status: 'on-leave' }, // Farhan Khan (on leave)
+  ];
+
+  employees.forEach(({ emp }, idx) => {
+    const profile = shiftProfiles[idx % shiftProfiles.length];
+    let checkIn = null;
+    let checkOut = null;
+    let workHours = 0;
+
+    if (profile.inH != null) {
+      checkIn = new Date(oct9);
+      checkIn.setHours(profile.inH, profile.inM, 0, 0);
+
+      checkOut = new Date(oct9);
+      checkOut.setHours(profile.outH, profile.outM, 0, 0);
+
+      workHours = Math.round(((checkOut - checkIn) / 3600000) * 100) / 100;
     }
-  }
+
+    attendanceOps.push({
+      employee: emp._id,
+      date: startOfDay(oct9),
+      checkIn,
+      checkOut,
+      status: profile.status,
+      workHours,
+    });
+  });
+
   await Attendance.insertMany(attendanceOps);
-  console.log(`   • ${attendanceOps.length} attendance records`);
+  console.log(`   • ${attendanceOps.length} attendance records for 9 Oct 2026`);
 
   // 5. Leave requests — a mix of pending / approved / rejected
   const leaveTypes = ['casual', 'sick', 'earned'];
