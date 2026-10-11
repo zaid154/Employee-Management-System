@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { PieChart, Users, CalendarCheck, Wallet, CalendarDays } from 'lucide-react';
+import { PieChart, Users, Wallet, CalendarDays, Download } from 'lucide-react';
 import { useAuth } from '../lib/auth.jsx';
 import { useFetch } from '../lib/hooks.js';
-import { PageHeader, Card, Loader, Select, EmptyState } from '../components/ui.jsx';
-import { DonutChart, BarChart, AreaChart, RankBars } from '../components/charts.jsx';
-import { money, compactMoney } from '../lib/format.js';
+import { PageHeader, Card, CardHeader, Loader, Select, EmptyState, Button } from '../components/ui.jsx';
+import { DonutChart, DistributionBarChart } from '../components/charts.jsx';
+import { money } from '../lib/format.js';
 import { isPrivileged, CHART_COLORS } from '../lib/constants.js';
 
 const now = new Date();
@@ -16,108 +16,136 @@ export default function Reports() {
   const [year, setYear] = useState(now.getFullYear());
 
   const { data: headcount, loading: l1 } = useFetch('/reports/headcount');
-  const { data: attendance, loading: l2 } = useFetch(`/reports/attendance?year=${year}`, [year]);
   const { data: leaves, loading: l3 } = useFetch(`/reports/leaves?year=${year}`, [year]);
   const { data: payroll, loading: l4 } = useFetch(showPayroll ? `/reports/payroll?year=${year}` : null, [year]);
 
   const hc = headcount?.data;
-  const deptBars = (hc?.byDepartment || []).map((d, i) => ({ ...d, color: CHART_COLORS[i % CHART_COLORS.length] }));
-  const typeData = (hc?.byType || []).map((d, i) => ({ ...d, color: CHART_COLORS[i % CHART_COLORS.length] }));
-  const leaveTypeBars = (leaves?.data?.byType || []).map((d, i) => ({ label: d.label, value: d.days, color: CHART_COLORS[i % CHART_COLORS.length] }));
+  const deptBars = (hc?.byDepartment || []).map((d, i) => ({
+    label: d.name || 'Unassigned',
+    value: d.count,
+    color: CHART_COLORS[i % CHART_COLORS.length],
+  }));
+
+  const typeData = (hc?.byType || []).map((d, i) => ({
+    label: d.type || d.label,
+    value: d.count || d.value,
+    color: CHART_COLORS[i % CHART_COLORS.length],
+  }));
+
+  const leaveTypeBars = (leaves?.data?.byType || []).map((d, i) => ({
+    label: `${d.label || d.type} Leave`,
+    value: d.days || d.count,
+    color: CHART_COLORS[i % CHART_COLORS.length],
+  }));
+
+  const exportCSV = () => {
+    if (!deptBars.length) return;
+    const rows = [
+      ['Department', 'Headcount'],
+      ...deptBars.map((d) => [d.label, d.value]),
+    ];
+    const csvContent = 'data:text/csv;charset=utf-8,' + rows.map((e) => e.join(',')).join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `headcount_report_${year}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   return (
     <>
       <PageHeader
         title="Reports & Analytics"
-        subtitle="Workforce, attendance, payroll & leave insights"
+        subtitle="Workforce headcount, attendance metrics, and leave trends"
         actions={
-          <Select value={year} onChange={(e) => setYear(Number(e.target.value))} style={{ minWidth: 120 }}>
-            {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
-          </Select>
+          <div className="flex items-center gap-2">
+            <Select
+              value={year}
+              onChange={(e) => setYear(Number(e.target.value))}
+              style={{ minWidth: 120 }}
+            >
+              {YEARS.map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </Select>
+            <Button variant="secondary" icon={Download} onClick={exportCSV}>
+              Export CSV
+            </Button>
+          </div>
         }
       />
 
       <div className="grid-2 mb-4">
-        <Card>
-          <div className="card-header">
-            <div className="card-title flex items-center gap-2"><Users size={17} /> Headcount by Department</div>
+        <Card pad={false}>
+          <CardHeader
+            title="Headcount by Department"
+            subtitle="Current organizational distribution"
+            action={<Users size={16} className="muted" />}
+          />
+          <div className="card-pad">
+            {l1 ? <Loader /> : deptBars.length ? <DistributionBarChart data={deptBars} /> : <EmptyState title="No headcount data" />}
           </div>
-          {l1 ? <Loader /> : deptBars.length ? <RankBars data={deptBars} /> : <EmptyState title="No data" />}
         </Card>
 
-        <Card>
-          <div className="card-header">
-            <div className="card-title flex items-center gap-2"><PieChart size={17} /> Employment Type</div>
+        <Card pad={false}>
+          <CardHeader
+            title="Employment Types"
+            subtitle="Full-time vs contract breakdown"
+            action={<PieChart size={16} className="muted" />}
+          />
+          <div className="card-pad">
+            {l1 ? <Loader /> : <DonutChart data={typeData} centerLabel="Total" />}
           </div>
-          {l1 ? <Loader /> : <DonutChart data={typeData} centerLabel="employees" />}
         </Card>
       </div>
 
-      <Card className="mb-4">
-        <div className="card-header">
-          <div className="card-title flex items-center gap-2"><CalendarCheck size={17} /> Attendance Trend · {year}</div>
-          <div className="flex gap-3 text-xs flex-wrap">
-            {[['Present', '#10b981'], ['Late', '#f59e0b'], ['Absent', '#ef4444'], ['On leave', '#3b82f6']].map(([l, c]) => (
-              <span key={l} className="flex items-center gap-1"><span style={{ width: 9, height: 9, borderRadius: 2, background: c }} /> {l}</span>
-            ))}
-          </div>
-        </div>
-        {l2 ? (
-          <Loader />
-        ) : (
-          <BarChart
-            data={attendance?.data || []}
-            keys={['present', 'late', 'absent', 'on-leave']}
-            colors={['#10b981', '#f59e0b', '#ef4444', '#3b82f6']}
-            height={240}
-          />
-        )}
-      </Card>
-
-      {showPayroll && (
-        <Card className="mb-4">
-          <div className="card-header">
-            <div className="card-title flex items-center gap-2"><Wallet size={17} /> Payroll Cost · {year}</div>
-            {payroll?.data?.totals && (
-              <div className="flex gap-4 text-sm">
-                <span><span className="muted">Net: </span><span className="font-bold">{money(payroll.data.totals.net)}</span></span>
-                <span className="hide-sm"><span className="muted">Deductions: </span><span className="font-bold">{money(payroll.data.totals.deductions)}</span></span>
-              </div>
-            )}
-          </div>
-          {l4 ? (
-            <Loader />
-          ) : (
-            <AreaChart data={payroll?.data?.byMonth || []} dataKey="net" color="#8b5cf6" height={230} valueFormat={compactMoney} />
-          )}
-        </Card>
-      )}
-
       <div className="grid-2">
-        <Card>
-          <div className="card-header">
-            <div className="card-title flex items-center gap-2"><CalendarDays size={17} /> Leave Usage by Type</div>
+        <Card pad={false}>
+          <CardHeader
+            title="Leave Utilization by Category"
+            subtitle={`Total days consumed in ${year}`}
+            action={<CalendarDays size={16} className="muted" />}
+          />
+          <div className="card-pad">
+            {l3 ? <Loader /> : leaveTypeBars.length ? <DistributionBarChart data={leaveTypeBars} /> : <EmptyState title="No leave data" />}
           </div>
-          {l3 ? <Loader /> : leaveTypeBars.length ? <RankBars data={leaveTypeBars} valueFormat={(v) => `${v} days`} /> : <EmptyState title="No leave data" />}
         </Card>
 
-        <Card>
-          <div className="card-header">
-            <div className="card-title flex items-center gap-2"><PieChart size={17} /> Leave Requests by Status</div>
-          </div>
-          {l3 ? (
-            <Loader />
-          ) : (
-            <DonutChart
-              data={(leaves?.data?.byStatus || []).map((d) => ({
-                label: d.label,
-                value: d.count,
-                color: { approved: '#10b981', pending: '#f59e0b', rejected: '#ef4444', cancelled: '#94a3b8' }[d.label] || '#8b5cf6',
-              }))}
-              centerLabel="requests"
+        {showPayroll && (
+          <Card pad={false}>
+            <CardHeader
+              title={`Annual Payroll Cost · ${year}`}
+              subtitle="Aggregated salary expenditure"
+              action={<Wallet size={16} className="muted" />}
             />
-          )}
-        </Card>
+            <div className="card-pad">
+              {l4 ? (
+                <Loader />
+              ) : payroll?.data?.totals ? (
+                <div className="flex-col gap-4">
+                  <div style={{ padding: 16, borderRadius: 'var(--radius-sm)', backgroundColor: 'var(--bg-subtle)' }}>
+                    <div className="text-xs muted mb-1">Total Net Disbursed</div>
+                    <div className="text-2xl font-bold font-mono" style={{ color: 'var(--green-text)' }}>
+                      {money(payroll.data.totals.net)}
+                    </div>
+                  </div>
+                  <div style={{ padding: 16, borderRadius: 'var(--radius-sm)', backgroundColor: 'var(--bg-subtle)' }}>
+                    <div className="text-xs muted mb-1">Total Statutory Deductions</div>
+                    <div className="text-xl font-bold font-mono" style={{ color: 'var(--red-text)' }}>
+                      {money(payroll.data.totals.deductions)}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <EmptyState title="No payroll data for this year" />
+              )}
+            </div>
+          </Card>
+        )}
       </div>
     </>
   );

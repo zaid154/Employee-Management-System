@@ -19,6 +19,30 @@ export const compactMoney = (n) => {
 export const fmtDate = (d, opts = { day: 'numeric', month: 'short', year: 'numeric' }) =>
   d ? new Date(d).toLocaleDateString('en-IN', opts) : '—';
 
+export const fmtDateRange = (start, end) => {
+  if (!start && !end) return '—';
+  if (!end || start === end) return fmtDate(start);
+  const s = new Date(start);
+  const e = new Date(end);
+  if (isNaN(s.getTime()) || isNaN(e.getTime())) return `${fmtDate(start)} – ${fmtDate(end)}`;
+  if (s.toDateString() === e.toDateString()) return fmtDate(start);
+
+  const sDay = s.getDate();
+  const eDay = e.getDate();
+  const sMonth = s.toLocaleDateString('en-IN', { month: 'short' });
+  const eMonth = e.toLocaleDateString('en-IN', { month: 'short' });
+  const sYear = s.getFullYear();
+  const eYear = e.getFullYear();
+
+  if (sYear === eYear && sMonth === eMonth) {
+    return `${sDay} – ${eDay} ${sMonth} ${sYear}`;
+  }
+  if (sYear === eYear) {
+    return `${sDay} ${sMonth} – ${eDay} ${eMonth} ${sYear}`;
+  }
+  return `${fmtDate(start)} – ${fmtDate(end)}`;
+};
+
 export const fmtDay = (d) => (d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '—');
 
 export const fmtTime = (d) =>
@@ -57,3 +81,8 @@ export const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
+
+export const monthName = (m) => {
+  const idx = Number(m) - 1;
+  return MONTHS[idx] || (m ? String(m) : '');
+};

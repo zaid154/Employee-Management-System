@@ -4,14 +4,37 @@ import { Button } from '../components/ui.jsx';
 
 export default function NotFound() {
   return (
-    <div className="center-screen flex-col gap-4 text-center" style={{ minHeight: '100vh' }}>
-      <div className="text-2xl gradient-text" style={{ fontSize: '5rem', fontWeight: 800, lineHeight: 1 }}>404</div>
-      <div>
-        <h1 className="text-xl font-bold">Page not found</h1>
-        <p className="muted mt-1">The page you&apos;re looking for doesn&apos;t exist or has moved.</p>
+    <div
+      style={{
+        minHeight: '70vh',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        textAlign: 'center',
+        padding: 24,
+      }}
+    >
+      <div
+        style={{
+          fontSize: '4rem',
+          fontWeight: 800,
+          lineHeight: 1,
+          color: 'var(--text-3)',
+          fontFamily: 'var(--font-mono)',
+          marginBottom: 16,
+        }}
+      >
+        404
       </div>
+      <h1 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>
+        Page Not Found
+      </h1>
+      <p className="muted text-sm mb-4" style={{ maxWidth: 380 }}>
+        The requested resource or page does not exist in your workspace.
+      </p>
       <Link to="/">
-        <Button icon={Home}>Back to dashboard</Button>
+        <Button icon={Home}>Return to Dashboard</Button>
       </Link>
     </div>
   );

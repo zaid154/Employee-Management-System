@@ -85,7 +85,11 @@ export const listAttendance = asyncHandler(async (req, res) => {
 
   const [items, total] = await Promise.all([
     Attendance.find(filter)
-      .populate('employee', 'firstName lastName employeeId avatar')
+      .populate({
+        path: 'employee',
+        select: 'firstName lastName employeeId avatar designation department',
+        populate: { path: 'department', select: 'name code' },
+      })
       .sort('-date')
       .skip((pageNum - 1) * perPage)
       .limit(perPage)

@@ -1,27 +1,33 @@
-import { useState, useEffect } from 'react';
-import { TrendingUp, Plus, Star, Eye, Pencil, CheckCircle2 } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { TrendingUp, Plus, Star, Eye, Award, CheckCircle2, Target } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../lib/auth.jsx';
 import { useFetch } from '../lib/hooks.js';
 import { api } from '../lib/api.js';
 import {
-  PageHeader, Card, Button, Badge, Avatar, Loader, EmptyState, Select, Input,
-  Textarea, Pagination, Modal, Field, IconButton,
+  PageHeader, Card, Button, Badge, Select, Input,
+  Textarea, Modal, Field, DataTable, UserCell, DateBadge,
 } from '../components/ui.jsx';
-import { fmtDate, fullName } from '../lib/format.js';
-import { canManage, isPrivileged } from '../lib/constants.js';
+import { fullName } from '../lib/format.js';
+import { canManage } from '../lib/constants.js';
 
-const COMPETENCIES = ['productivity', 'quality', 'communication', 'teamwork', 'leadership'];
+const COMPETENCIES = [
+  { key: 'productivity', label: 'Productivity & Execution' },
+  { key: 'quality', label: 'Quality of Work' },
+  { key: 'communication', label: 'Communication & Collaboration' },
+  { key: 'teamwork', label: 'Teamwork & Initiative' },
+  { key: 'leadership', label: 'Leadership / Problem Solving' },
+];
 
-function Stars({ value = 0, size = 15, onChange }) {
+function Stars({ value = 0, size = 14, onChange }) {
   return (
-    <span className="flex gap-1" style={{ color: '#f59e0b' }}>
+    <span className="flex gap-1" style={{ color: '#d97706' }}>
       {[1, 2, 3, 4, 5].map((n) => (
         <Star
           key={n}
           size={size}
-          fill={n <= Math.round(value) ? '#f59e0b' : 'none'}
-          stroke={n <= Math.round(value) ? '#f59e0b' : 'var(--text-3)'}
+          fill={n <= Math.round(value) ? '#d97706' : 'none'}
+          stroke={n <= Math.round(value) ? '#d97706' : 'var(--text-3)'}
           onClick={onChange ? () => onChange(n) : undefined}
           style={onChange ? { cursor: 'pointer' } : undefined}
         />
@@ -36,262 +42,431 @@ export default function Performance() {
   const [page, setPage] = useState(1);
   const query = new URLSearchParams({ page, limit: 12 }).toString();
   const { data, loading, refetch } = useFetch(`/performance?${query}`, [query]);
+  const { data: options } = useFetch(reviewer ? '/employees/options' : null);
 
   const [formOpen, setFormOpen] = useState(false);
-  const [editing, setEditing] = useState(null);
   const [viewing, setViewing] = useState(null);
-
-  const reviews = data?.data || [];
-
-  return (
-    <>
-      <PageHeader
-        title="Performance"
-        subtitle={reviewer ? 'Review, rate, and track your team&apos;s growth' : 'View and acknowledge your performance reviews'}
-        actions={reviewer && <Button icon={Plus} onClick={() => { setEditing(null); setFormOpen(true); }}>New Review</Button>}
-      />
-
-      {loading ? (
-        <Loader />
-      ) : reviews.length === 0 ? (
-        <Card><EmptyState icon={TrendingUp} title="No performance reviews" message={reviewer ? 'Create a review to get started.' : 'Your reviews will appear here once submitted.'} /></Card>
-      ) : (
-        <div className="grid-cards">
-          {reviews.map((r) => (
-            <Card key={r._id} hover className="card-hover">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3" style={{ minWidth: 0 }}>
-                  <Avatar name={fullName(r.employee)} src={r.employee?.avatar} size={42} />
-                  <div style={{ minWidth: 0 }}>
-                    <div className="font-semi truncate">{fullName(r.employee)}</div>
-                    <div className="text-xs muted truncate">{r.employee?.designation}</div>
-                  </div>
-                </div>
-                <Badge status={r.status}>{r.status}</Badge>
-              </div>
-
-              <div className="flex items-center justify-between mt-4" style={{ padding: 12, borderRadius: 12, background: 'var(--surface-2)' }}>
-                <div>
-                  <div className="text-xs muted">{r.period}</div>
-                  <div className="flex items-center gap-2 mt-1">
-                    <Stars value={r.overallScore} />
-                    <span className="font-bold">{r.overallScore?.toFixed(1)}</span>
-                  </div>
-                </div>
-                <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'var(--gradient)', color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 800 }}>
-                  {r.overallScore ? Math.round((r.overallScore / 5) * 100) : 0}%
-                </div>
-              </div>
-
-              <div className="flex gap-2 mt-4">
-                <Button size="sm" variant="ghost" icon={Eye} onClick={() => setViewing(r)} className="flex-1">View</Button>
-                {reviewer && (
-                  <IconButton icon={Pencil} size={15} onClick={() => { setEditing(r); setFormOpen(true); }} />
-                )}
-              </div>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      {data?.pagination && (
-        <Pagination page={data.pagination.page} pages={data.pagination.pages} total={data.pagination.total} onPage={setPage} />
-      )}
-
-      {reviewer && (
-        <ReviewForm open={formOpen} onClose={() => setFormOpen(false)} onSaved={refetch} review={editing} privileged={isPrivileged(user.role)} />
-      )}
-      <ViewReview review={viewing} onClose={() => setViewing(null)} onDone={refetch} canAck={!canManage(user.role)} />
-    </>
-  );
-}
-
-function ReviewForm({ open, onClose, onSaved, review, privileged }) {
-  const isEdit = Boolean(review);
-  const blank = {
-    employee: '', period: `Q${Math.floor(new Date().getMonth() / 3) + 1} ${new Date().getFullYear()}`,
-    ratings: { productivity: 3, quality: 3, communication: 3, teamwork: 3, leadership: 3 },
-    strengths: '', improvements: '', reviewerComment: '', status: 'submitted',
-  };
-  const [form, setForm] = useState(blank);
-  const [saving, setSaving] = useState(false);
-  const { data: options } = useFetch(open ? '/employees/options' : null);
-
-  // Sync form state whenever the modal opens (for a fresh or existing review).
-  useEffect(() => {
-    if (!open) return;
-    if (review) {
-      setForm({
-        employee: review.employee?._id || review.employee,
-        period: review.period,
-        ratings: { ...blank.ratings, ...review.ratings },
-        strengths: review.strengths || '',
-        improvements: review.improvements || '',
-        reviewerComment: review.reviewerComment || '',
-        status: review.status,
-      });
-    } else {
-      setForm(blank);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, review]);
-
-  const setRating = (k, v) => setForm((f) => ({ ...f, ratings: { ...f.ratings, [k]: v } }));
-
-  const save = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-    try {
-      const payload = { ...form };
-      if (isEdit) await api.patch(`/performance/${review._id}`, payload);
-      else await api.post('/performance', payload);
-      toast.success(isEdit ? 'Review updated' : 'Review created');
-      onSaved();
-      onClose();
-      setForm(blank);
-    } catch (err) {
-      toast.error(err.friendlyMessage);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      size="lg"
-      title={isEdit ? 'Edit Review' : 'New Performance Review'}
-      footer={
-        <>
-          <Button variant="ghost" onClick={onClose} disabled={saving}>Cancel</Button>
-          <Button onClick={save} disabled={saving || !form.employee}>{saving ? 'Saving…' : 'Save review'}</Button>
-        </>
-      }
-    >
-      <form onSubmit={save} className="flex-col gap-4">
-        <div className="grid-2" style={{ gap: 14 }}>
-          <Field label="Employee" required>
-            <Select value={form.employee} onChange={(e) => setForm({ ...form, employee: e.target.value })} required disabled={isEdit}>
-              <option value="">Select employee</option>
-              {(options?.data || []).map((m) => <option key={m._id} value={m._id}>{m.firstName} {m.lastName}</option>)}
-            </Select>
-          </Field>
-          <Field label="Review period" required>
-            <Input value={form.period} onChange={(e) => setForm({ ...form, period: e.target.value })} placeholder="Q1 2026" required />
-          </Field>
-        </div>
-
-        <div className="divider" />
-        <div className="text-sm font-bold">Competency Ratings</div>
-        {COMPETENCIES.map((c) => (
-          <div key={c} className="flex items-center justify-between">
-            <span className="capitalize text-2 font-semi">{c}</span>
-            <Stars value={form.ratings[c]} size={20} onChange={(v) => setRating(c, v)} />
-          </div>
-        ))}
-
-        <div className="divider" />
-        <Field label="Strengths"><Textarea value={form.strengths} onChange={(e) => setForm({ ...form, strengths: e.target.value })} /></Field>
-        <Field label="Areas for improvement"><Textarea value={form.improvements} onChange={(e) => setForm({ ...form, improvements: e.target.value })} /></Field>
-        <Field label="Reviewer comment"><Textarea value={form.reviewerComment} onChange={(e) => setForm({ ...form, reviewerComment: e.target.value })} /></Field>
-        <Field label="Status">
-          <Select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
-            <option value="draft">Draft</option>
-            <option value="submitted">Submitted</option>
-          </Select>
-        </Field>
-      </form>
-    </Modal>
-  );
-}
-
-function ViewReview({ review, onClose, onDone, canAck }) {
-  const [comment, setComment] = useState('');
   const [busy, setBusy] = useState(false);
-  if (!review) return null;
 
-  const ack = async () => {
+  const [form, setForm] = useState({
+    employeeId: '',
+    period: 'Q3 2026',
+    ratings: {
+      productivity: 4,
+      quality: 4,
+      communication: 4,
+      teamwork: 4,
+      leadership: 3,
+    },
+    strengths: '',
+    improvements: '',
+    goals: '',
+  });
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    if (!form.employeeId) {
+      toast.error('Please select an employee');
+      return;
+    }
+
     setBusy(true);
     try {
-      await api.patch(`/performance/${review._id}/acknowledge`, { employeeComment: comment });
-      toast.success('Review acknowledged ✅');
-      onDone();
-      onClose();
+      await api.post('/performance', form);
+      toast.success('Performance review submitted');
+      setFormOpen(false);
+      refetch();
     } catch (err) {
-      toast.error(err.friendlyMessage);
+      toast.error(err.friendlyMessage || 'Failed to submit review');
     } finally {
       setBusy(false);
     }
   };
 
-  const canAcknowledge = canAck && review.status === 'submitted';
+  const reviews = useMemo(() => data?.data || [], [data]);
+  const totalReviews = data?.pagination?.total ?? 0;
+
+  const stats = useMemo(() => {
+    const total = totalReviews || reviews.length;
+    if (reviews.length === 0) {
+      return { total: 0, avgScore: '—', topPerformers: 0 };
+    }
+    const sum = reviews.reduce((acc, r) => acc + (r.overallScore || 0), 0);
+    const avg = (sum / reviews.length).toFixed(1);
+    const topCount = reviews.filter((r) => (r.overallScore || 0) >= 4.0).length;
+    return { total, avgScore: avg, topPerformers: topCount };
+  }, [reviews, totalReviews]);
+
+  const columns = [
+    {
+      header: 'Employee',
+      key: 'employee',
+      minWidth: 210,
+      render: (r) => (
+        <UserCell
+          name={fullName(r.employee)}
+          avatar={r.employee?.avatar}
+          subtitle={r.employee?.designation || 'Team Member'}
+        />
+      ),
+    },
+    {
+      header: 'Period',
+      key: 'period',
+      minWidth: 120,
+      render: (r) => <span className="font-mono font-semi text-xs">{r.period}</span>,
+    },
+    {
+      header: 'Rating Score',
+      key: 'overallScore',
+      minWidth: 170,
+      render: (r) => (
+        <div className="flex items-center gap-2">
+          <Stars value={r.overallScore} />
+          <span className="font-bold text-sm font-mono" style={{ color: 'var(--text)' }}>
+            {r.overallScore?.toFixed(1)} / 5.0
+          </span>
+        </div>
+      ),
+    },
+    {
+      header: 'Evaluator',
+      key: 'reviewer',
+      minWidth: 150,
+      render: (r) => <span className="text-sm">{r.reviewer?.name || 'Manager'}</span>,
+    },
+    {
+      header: 'Status',
+      key: 'status',
+      minWidth: 120,
+      render: (r) => <Badge status={r.status}>{r.status}</Badge>,
+    },
+    {
+      header: 'Submitted',
+      key: 'createdAt',
+      minWidth: 130,
+      render: (r) => <DateBadge date={r.createdAt} />,
+    },
+    {
+      header: 'Actions',
+      key: 'actions',
+      align: 'right',
+      minWidth: 100,
+      render: (r) => (
+        <div className="table-actions-group">
+          <button
+            type="button"
+            className="btn-action-view"
+            onClick={() => setViewing(r)}
+            title="Inspect evaluation details"
+          >
+            <Eye size={13} />
+            <span>Details</span>
+          </button>
+        </div>
+      ),
+    },
+  ];
 
   return (
-    <Modal
-      open={Boolean(review)}
-      onClose={onClose}
-      size="lg"
-      title="Performance Review"
-      footer={canAcknowledge && <Button variant="success" icon={CheckCircle2} onClick={ack} disabled={busy}>{busy ? 'Working…' : 'Acknowledge'}</Button>}
-    >
-      <div className="flex items-center justify-between flex-wrap gap-3 mb-4" style={{ padding: 16, borderRadius: 14, background: 'var(--gradient-soft)' }}>
-        <div className="flex items-center gap-3">
-          <Avatar name={fullName(review.employee)} src={review.employee?.avatar} size={48} />
-          <div>
-            <div className="font-bold text-lg">{fullName(review.employee)}</div>
-            <div className="text-xs muted">{review.employee?.designation} · {review.period}</div>
+    <>
+      <PageHeader
+        title="Performance Evaluations"
+        subtitle={reviewer ? 'Evaluate team competency ratings and growth goals' : 'View your performance reviews and feedback'}
+        actions={
+          reviewer && (
+            <Button
+              icon={Plus}
+              onClick={() => {
+                setForm({
+                  employeeId: '',
+                  period: 'Q3 2026',
+                  ratings: { productivity: 4, quality: 4, communication: 4, teamwork: 4, leadership: 3 },
+                  strengths: '',
+                  improvements: '',
+                  goals: '',
+                });
+                setFormOpen(true);
+              }}
+            >
+              New Evaluation
+            </Button>
+          )
+        }
+      />
+
+      {/* KPI Metric Strip */}
+      <div className="metric-strip">
+        <div className="metric-card">
+          <div className="metric-header">
+            <span>Evaluations Conducted</span>
+            <TrendingUp size={15} style={{ color: 'var(--text-3)' }} />
+          </div>
+          <div className="metric-value font-mono">{stats.total}</div>
+          <div className="metric-meta">
+            <span>Recorded review cycles</span>
           </div>
         </div>
-        <div className="text-center">
-          <div className="flex items-center gap-2"><Stars value={review.overallScore} size={18} /><span className="font-bold text-lg">{review.overallScore?.toFixed(1)}</span></div>
-          <Badge status={review.status}>{review.status}</Badge>
+
+        <div className="metric-card">
+          <div className="metric-header">
+            <span>Org Avg Rating</span>
+            <Award size={15} style={{ color: 'var(--amber-text)' }} />
+          </div>
+          <div className="metric-value font-mono" style={{ color: 'var(--amber-text)' }}>
+            {stats.avgScore} <span className="text-xs muted font-normal">/ 5.0</span>
+          </div>
+          <div className="metric-meta">
+            <span>Average score across competencies</span>
+          </div>
+        </div>
+
+        <div className="metric-card">
+          <div className="metric-header">
+            <span>High Performers (≥ 4.0)</span>
+            <CheckCircle2 size={15} style={{ color: 'var(--green-text)' }} />
+          </div>
+          <div className="metric-value font-mono" style={{ color: 'var(--green-text)' }}>
+            {stats.topPerformers}
+          </div>
+          <div className="metric-meta">
+            <span>Exceeding expectations</span>
+          </div>
+        </div>
+
+        <div className="metric-card">
+          <div className="metric-header">
+            <span>Evaluation Framework</span>
+            <Target size={15} style={{ color: 'var(--accent)' }} />
+          </div>
+          <div className="metric-value font-mono" style={{ fontSize: 18 }}>
+            5 Pillars
+          </div>
+          <div className="metric-meta">
+            <span>Execution, Quality, Comms & Lead</span>
+          </div>
         </div>
       </div>
 
-      <div className="text-sm font-bold mb-2">Competencies</div>
-      <div className="flex-col gap-2 mb-4">
-        {COMPETENCIES.map((c) => (
-          <div key={c} className="flex items-center justify-between">
-            <span className="capitalize text-2">{c}</span>
-            <Stars value={review.ratings?.[c] || 0} />
-          </div>
-        ))}
-      </div>
+      {/* Reviews Data Table */}
+      <DataTable
+        columns={columns}
+        data={reviews}
+        loading={loading}
+        keyField="_id"
+        emptyIcon={TrendingUp}
+        emptyTitle="No performance reviews recorded"
+        emptyMessage={reviewer ? 'Start a new evaluation cycle for team members.' : 'Performance reviews will appear here once submitted by your manager.'}
+        emptyAction={
+          reviewer && (
+            <Button
+              variant="secondary"
+              icon={Plus}
+              onClick={() => {
+                setForm({
+                  employeeId: '',
+                  period: 'Q3 2026',
+                  ratings: { productivity: 4, quality: 4, communication: 4, teamwork: 4, leadership: 3 },
+                  strengths: '',
+                  improvements: '',
+                  goals: '',
+                });
+                setFormOpen(true);
+              }}
+            >
+              Start First Evaluation
+            </Button>
+          )
+        }
+        pagination={{
+          page,
+          pages: data?.pagination?.pages || 1,
+          total: totalReviews,
+          limit: 12,
+          onPage: setPage,
+        }}
+      />
 
-      {review.goals?.length > 0 && (
-        <>
-          <div className="text-sm font-bold mb-2">Goals</div>
-          <div className="flex-col gap-2 mb-4">
-            {review.goals.map((g, i) => (
-              <div key={i} className="flex items-center justify-between text-sm" style={{ padding: 10, borderRadius: 10, background: 'var(--surface-2)' }}>
-                <span className="text-2">{g.title} <span className="muted">· {g.weight}%</span></span>
-                <Stars value={g.rating} size={13} />
+      {/* New Evaluation Modal */}
+      {formOpen && (
+        <Modal
+          open={formOpen}
+          onClose={() => setFormOpen(false)}
+          title="New Performance Evaluation"
+          subtitle="Score employee competencies and document growth objectives"
+          size="lg"
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setFormOpen(false)} disabled={busy}>
+                Cancel
+              </Button>
+              <Button onClick={handleSave} loading={busy}>
+                Submit Evaluation
+              </Button>
+            </>
+          }
+        >
+          <form onSubmit={handleSave}>
+            <div className="form-grid-2">
+              <Field label="Employee" required>
+                <Select
+                  value={form.employeeId}
+                  onChange={(e) => setForm({ ...form, employeeId: e.target.value })}
+                  required
+                >
+                  <option value="">Select Employee</option>
+                  {(options?.data || []).map((m) => (
+                    <option key={m._id} value={m._id}>
+                      {m.firstName} {m.lastName} ({m.designation})
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+
+              <Field label="Evaluation Period" required>
+                <Input
+                  value={form.period}
+                  onChange={(e) => setForm({ ...form, period: e.target.value })}
+                  placeholder="e.g. Q3 2026 / Annual 2026"
+                  required
+                />
+              </Field>
+            </div>
+
+            <div className="mb-4" style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: 16, background: 'var(--bg-subtle)' }}>
+              <div className="font-semi text-xs uppercase tracking-wide muted mb-3">
+                Core Competency Ratings (1 to 5 Stars)
               </div>
-            ))}
+              <div className="flex-col gap-3">
+                {COMPETENCIES.map((c) => (
+                  <div key={c.key} className="flex items-center justify-between" style={{ background: 'var(--surface)', padding: '8px 12px', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border)' }}>
+                    <span className="font-medium text-sm">{c.label}</span>
+                    <div className="flex items-center gap-3">
+                      <Stars
+                        value={form.ratings[c.key]}
+                        size={18}
+                        onChange={(val) =>
+                          setForm({
+                            ...form,
+                            ratings: { ...form.ratings, [c.key]: val },
+                          })
+                        }
+                      />
+                      <span className="font-mono font-bold text-sm w-4 text-right">
+                        {form.ratings[c.key]}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <Field label="Key Strengths & Achievements">
+              <Textarea
+                value={form.strengths}
+                onChange={(e) => setForm({ ...form, strengths: e.target.value })}
+                rows={2}
+                placeholder="High impact contributions and standout work…"
+              />
+            </Field>
+
+            <Field label="Areas for Growth & Improvement">
+              <Textarea
+                value={form.improvements}
+                onChange={(e) => setForm({ ...form, improvements: e.target.value })}
+                rows={2}
+                placeholder="Development opportunities and skill gaps…"
+              />
+            </Field>
+
+            <Field label="Upcoming Goals & Objectives">
+              <Textarea
+                value={form.goals}
+                onChange={(e) => setForm({ ...form, goals: e.target.value })}
+                rows={2}
+                placeholder="Target goals for next quarter / cycle…"
+              />
+            </Field>
+          </form>
+        </Modal>
+      )}
+
+      {/* View Details Modal */}
+      {viewing && (
+        <Modal
+          open={Boolean(viewing)}
+          onClose={() => setViewing(null)}
+          title={`Performance Review: ${fullName(viewing.employee)}`}
+          subtitle={`Cycle: ${viewing.period} · Overall Score: ${viewing.overallScore?.toFixed(1)} / 5.0`}
+          size="lg"
+          footer={
+            <Button variant="secondary" onClick={() => setViewing(null)}>
+              Close
+            </Button>
+          }
+        >
+          <div className="flex-col gap-4">
+            <div className="flex items-center justify-between p-3" style={{ background: 'var(--bg-subtle)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
+              <div>
+                <div className="font-bold text-sm">{fullName(viewing.employee)}</div>
+                <div className="text-xs muted">{viewing.employee?.designation} · {viewing.employee?.department?.name || 'General'}</div>
+              </div>
+              <div className="text-right">
+                <div className="flex items-center gap-1.5">
+                  <Stars value={viewing.overallScore} size={16} />
+                  <span className="font-bold text-base font-mono">{viewing.overallScore?.toFixed(1)}</span>
+                </div>
+                <div className="text-xs muted">Evaluated by {viewing.reviewer?.name || 'Manager'}</div>
+              </div>
+            </div>
+
+            <div>
+              <div className="font-semi text-xs uppercase tracking-wide muted mb-2">Competency Breakdown</div>
+              <div className="grid-2">
+                {COMPETENCIES.map((c) => {
+                  const score = viewing.ratings?.[c.key] || 0;
+                  return (
+                    <div key={c.key} className="flex items-center justify-between p-2" style={{ background: 'var(--bg-subtle)', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border)' }}>
+                      <span className="text-xs font-medium">{c.label}</span>
+                      <div className="flex items-center gap-2">
+                        <Stars value={score} size={13} />
+                        <span className="font-mono font-bold text-xs">{score}/5</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {viewing.strengths && (
+              <div>
+                <div className="font-semi text-xs uppercase tracking-wide muted mb-1">Key Strengths</div>
+                <div className="p-3 text-sm text-2" style={{ background: 'var(--bg-subtle)', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border)', lineHeight: 1.6 }}>
+                  {viewing.strengths}
+                </div>
+              </div>
+            )}
+
+            {viewing.improvements && (
+              <div>
+                <div className="font-semi text-xs uppercase tracking-wide muted mb-1">Development Areas</div>
+                <div className="p-3 text-sm text-2" style={{ background: 'var(--bg-subtle)', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border)', lineHeight: 1.6 }}>
+                  {viewing.improvements}
+                </div>
+              </div>
+            )}
+
+            {viewing.goals && (
+              <div>
+                <div className="font-semi text-xs uppercase tracking-wide muted mb-1">Next Cycle Objectives</div>
+                <div className="p-3 text-sm text-2" style={{ background: 'var(--bg-subtle)', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border)', lineHeight: 1.6 }}>
+                  {viewing.goals}
+                </div>
+              </div>
+            )}
           </div>
-        </>
+        </Modal>
       )}
-
-      {review.strengths && <Block label="Strengths" text={review.strengths} />}
-      {review.improvements && <Block label="Areas for improvement" text={review.improvements} />}
-      {review.reviewerComment && <Block label="Reviewer comment" text={review.reviewerComment} />}
-      {review.employeeComment && <Block label="Employee response" text={review.employeeComment} />}
-
-      {canAcknowledge && (
-        <Field label="Your response (optional)" className="mt-2">
-          <Textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Add your comments before acknowledging" />
-        </Field>
-      )}
-    </Modal>
-  );
-}
-
-function Block({ label, text }) {
-  return (
-    <div className="mb-4">
-      <div className="text-xs font-bold muted mb-2" style={{ letterSpacing: '0.05em', textTransform: 'uppercase' }}>{label}</div>
-      <p className="text-sm text-2" style={{ lineHeight: 1.6 }}>{text}</p>
-    </div>
+    </>
   );
 }

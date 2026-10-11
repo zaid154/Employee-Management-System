@@ -11,10 +11,10 @@ export async function connectDB(retries = 5, delayMs = 3000) {
   for (let attempt = 1; attempt <= retries; attempt += 1) {
     try {
       await mongoose.connect(env.mongoUri);
-      console.log(`✅ MongoDB connected (${mongoose.connection.name})`);
+      console.log(`[INFO] MongoDB connected (${mongoose.connection.name})`);
       return mongoose.connection;
     } catch (err) {
-      console.error(`❌ MongoDB connection failed (attempt ${attempt}/${retries}): ${err.message}`);
+      console.error(`[ERROR] MongoDB connection failed (attempt ${attempt}/${retries}): ${err.message}`);
       if (attempt === retries) throw err;
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }

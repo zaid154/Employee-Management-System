@@ -1,14 +1,17 @@
-import { useState } from 'react';
-import { Wallet, Sparkles, Eye, CheckCircle2, Trash2, Printer, TrendingUp, TrendingDown } from 'lucide-react';
+import { useState, useMemo, useCallback } from 'react';
+import {
+  Wallet, Calculator, Eye, CheckCircle2, Trash2, Printer, TrendingUp, TrendingDown,
+  Building, RefreshCw, RotateCcw
+} from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../lib/auth.jsx';
 import { useFetch } from '../lib/hooks.js';
 import { api } from '../lib/api.js';
 import {
-  PageHeader, Card, Button, Badge, Avatar, Loader, EmptyState, Select,
-  Pagination, Modal, Field, Input, IconButton, ConfirmDialog,
+  PageHeader, Button, Badge, DataTable, UserCell, DateBadge, Select,
+  Modal, Field, IconButton, ConfirmDialog, Segment,
 } from '../components/ui.jsx';
-import { money, fmtDate, fullName, MONTHS } from '../lib/format.js';
+import { money, fmtDate, fullName, MONTHS, monthName } from '../lib/format.js';
 import { isPrivileged } from '../lib/constants.js';
 
 const now = new Date();
@@ -24,27 +27,49 @@ export default function Payroll() {
   const [page, setPage] = useState(1);
 
   const query = new URLSearchParams({
-    page, limit: 15,
-    ...(month && { month }), ...(year && { year }), ...(status && { status }),
+    page,
+    limit: 15,
+    ...(month && { month }),
+    ...(year && { year }),
+    ...(status && { status }),
   }).toString();
+
   const { data, loading, refetch } = useFetch(`/payroll?${query}`, [query]);
 
   const [genOpen, setGenOpen] = useState(false);
-  const [viewId, setViewId] = useState(null);
+  const [genMonth, setGenMonth] = useState(now.getMonth() + 1);
+  const [genYear, setGenYear] = useState(now.getFullYear());
+
+  const [viewSlip, setViewSlip] = useState(null);
   const [toDelete, setToDelete] = useState(null);
   const [busy, setBusy] = useState(false);
 
-  const markPaid = async (id) => {
+  const markPaid = useCallback(async (id) => {
     try {
       await api.patch(`/payroll/${id}/pay`);
-      toast.success('Marked as paid ✅');
+      toast.success('Payslip marked as paid');
       refetch();
     } catch (err) {
-      toast.error(err.friendlyMessage);
+      toast.error(err.friendlyMessage || 'Action failed');
+    }
+  }, [refetch]);
+
+  const handleGenerate = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      const res = await api.post('/payroll/generate', { month: Number(genMonth), year: Number(genYear) });
+      toast.success(res.data?.message || 'Payroll generated successfully');
+      setGenOpen(false);
+      refetch();
+    } catch (err) {
+      toast.error(err.friendlyMessage || 'Payroll generation failed');
+    } finally {
+      setBusy(false);
     }
   };
 
-  const del = async () => {
+  const handleDelete = async () => {
     setBusy(true);
     try {
       await api.delete(`/payroll/${toDelete._id}`);
@@ -52,284 +77,520 @@ export default function Payroll() {
       setToDelete(null);
       refetch();
     } catch (err) {
-      toast.error(err.friendlyMessage);
+      toast.error(err.friendlyMessage || 'Delete failed');
     } finally {
       setBusy(false);
     }
   };
 
+  const resetFilters = () => {
+    setMonth('');
+    setYear('');
+    setStatus('');
+    setPage(1);
+  };
+
+  const hasActiveFilters = Boolean(month || year || status);
+
   const slips = data?.data || [];
   const totals = data?.totals || { net: 0, gross: 0 };
+  const totalSlips = data?.pagination?.total ?? 0;
+
+  // Define Table Columns
+  const columns = useMemo(
+    () => [
+      {
+        header: 'Employee',
+        key: 'employee',
+        minWidth: 200,
+        render: (p) => {
+          const empName = fullName(p.employee) || 'Employee';
+          const empDept = p.employee?.department?.name || '';
+          const empId = p.employee?.employeeId || '';
+          const sub = [empId, empDept].filter(Boolean).join(' · ');
+          return <UserCell name={empName} avatar={p.employee?.avatar} subtitle={sub} />;
+        },
+      },
+      {
+        header: 'Pay Period',
+        key: 'period',
+        minWidth: 140,
+        render: (p) => (
+          <div className="table-date-badge">
+            <span>{monthName(p.month)} {p.year}</span>
+          </div>
+        ),
+      },
+      {
+        header: 'Basic Salary',
+        key: 'basic',
+        align: 'right',
+        className: 'table-cell-num',
+        render: (p) => money(p.basic || p.earnings?.basic),
+      },
+      {
+        header: 'Gross Pay',
+        key: 'gross',
+        align: 'right',
+        className: 'table-cell-num font-semi',
+        render: (p) => money(p.grossEarnings ?? p.grossPay ?? (p.basic + (p.hra || 0) + (p.allowances || 0) + (p.bonus || 0))),
+      },
+      {
+        header: 'Deductions',
+        key: 'deductions',
+        align: 'right',
+        className: 'table-cell-num',
+        render: (p) => {
+          const ded = p.totalDeductions ?? ((p.pf || 0) + (p.professionalTax || 0) + (p.tax || 0) + (p.lopDeduction || 0) + (p.otherDeductions || 0));
+          return <span style={{ color: 'var(--red-text)' }}>− {money(ded)}</span>;
+        },
+      },
+      {
+        header: 'Net Payable',
+        key: 'netPay',
+        align: 'right',
+        className: 'table-cell-num font-bold',
+        render: (p) => (
+          <span style={{ color: 'var(--green-text)', fontSize: 13.5 }}>
+            {money(p.netPay)}
+          </span>
+        ),
+      },
+      {
+        header: 'Status',
+        key: 'status',
+        width: 110,
+        render: (p) => <Badge status={p.status}>{p.status}</Badge>,
+      },
+      {
+        header: 'Actions',
+        key: 'actions',
+        width: 140,
+        align: 'right',
+        render: (p) => (
+          <div className="table-actions-group">
+            <button
+              type="button"
+              className="btn-action-view"
+              onClick={() => setViewSlip(p)}
+              title="View Payslip Statement"
+            >
+              <Eye size={13} />
+              <span>Slip</span>
+            </button>
+            {canRun && p.status !== 'paid' && (
+              <button
+                type="button"
+                className="btn-action-approve"
+                onClick={() => markPaid(p._id)}
+                title="Mark as Paid"
+              >
+                <CheckCircle2 size={13} />
+                <span>Pay</span>
+              </button>
+            )}
+            {canRun && p.status !== 'paid' && (
+              <IconButton
+                icon={Trash2}
+                variant="ghost"
+                size={14}
+                onClick={() => setToDelete(p)}
+                title="Delete Slip"
+                style={{ color: 'var(--red)' }}
+              />
+            )}
+          </div>
+        ),
+      },
+    ],
+    [canRun, markPaid]
+  );
 
   return (
     <>
       <PageHeader
-        title="Payroll"
-        subtitle={canRun ? 'Generate and manage employee payslips' : 'View and download your payslips'}
-        actions={canRun && <Button icon={Sparkles} onClick={() => setGenOpen(true)}>Generate Payroll</Button>}
+        title="Payroll & Compensation"
+        subtitle={canRun ? 'Generate monthly payroll batches, calculate statutory deductions, and issue payslips' : 'View and download your monthly salary statements'}
+        actions={
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" icon={RefreshCw} onClick={refetch} title="Refresh Data">
+              Refresh
+            </Button>
+            {canRun && (
+              <Button icon={Calculator} onClick={() => setGenOpen(true)}>
+                Run Payroll Batch
+              </Button>
+            )}
+          </div>
+        }
       />
 
       {canRun && (
-        <div className="grid-stats mb-4">
-          <Card className="stat-card">
-            <div className="stat-icon" style={{ background: '#6366f1' }}><Wallet size={20} /></div>
-            <div className="stat-value">{money(totals.net)}</div>
-            <div className="stat-label">Total net (filtered)</div>
-          </Card>
-          <Card className="stat-card">
-            <div className="stat-icon" style={{ background: '#10b981' }}><TrendingUp size={20} /></div>
-            <div className="stat-value">{money(totals.gross)}</div>
-            <div className="stat-label">Total gross (filtered)</div>
-          </Card>
-          <Card className="stat-card">
-            <div className="stat-icon" style={{ background: '#f59e0b' }}><TrendingDown size={20} /></div>
-            <div className="stat-value">{money(totals.gross - totals.net)}</div>
-            <div className="stat-label">Total deductions</div>
-          </Card>
-          <Card className="stat-card">
-            <div className="stat-icon" style={{ background: '#8b5cf6' }}><Wallet size={20} /></div>
-            <div className="stat-value">{data?.pagination?.total ?? 0}</div>
-            <div className="stat-label">Payslips</div>
-          </Card>
+        <div className="metric-strip">
+          <div className="metric-card">
+            <div className="metric-header">
+              <span className="font-semi">Total Gross Pay</span>
+              <TrendingUp size={15} style={{ color: 'var(--blue)' }} />
+            </div>
+            <div className="metric-value font-mono">{money(totals.gross)}</div>
+            <div className="metric-meta">Gross earnings across period</div>
+          </div>
+
+          <div className="metric-card">
+            <div className="metric-header">
+              <span className="font-semi">Total Deductions</span>
+              <TrendingDown size={15} style={{ color: 'var(--red)' }} />
+            </div>
+            <div className="metric-value font-mono" style={{ color: 'var(--red-text)' }}>
+              {money(Math.max(0, totals.gross - totals.net))}
+            </div>
+            <div className="metric-meta">PF, taxes &amp; penalties</div>
+          </div>
+
+          <div className="metric-card">
+            <div className="metric-header">
+              <span className="font-semi">Net Take-Home Pay</span>
+              <Wallet size={15} style={{ color: 'var(--green)' }} />
+            </div>
+            <div className="metric-value font-mono" style={{ color: 'var(--green-text)' }}>
+              {money(totals.net)}
+            </div>
+            <div className="metric-meta">Net disbursed to staff</div>
+          </div>
+
+          <div className="metric-card">
+            <div className="metric-header">
+              <span className="font-semi">Total Payslips</span>
+              <Wallet size={15} />
+            </div>
+            <div className="metric-value font-mono">{totalSlips}</div>
+            <div className="metric-meta">Generated statements</div>
+          </div>
         </div>
       )}
 
-      <Card className="mb-4" style={{ padding: 16 }}>
-        <div className="toolbar" style={{ margin: 0 }}>
-          <Select value={month} onChange={(e) => { setMonth(e.target.value); setPage(1); }} style={{ minWidth: 150 }}>
-            <option value="">All months</option>
-            {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
-          </Select>
-          <Select value={year} onChange={(e) => { setYear(e.target.value); setPage(1); }} style={{ minWidth: 120 }}>
-            <option value="">All years</option>
-            {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
-          </Select>
-          <Select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }} style={{ minWidth: 130 }}>
-            <option value="">All statuses</option>
-            <option value="draft">Draft</option>
-            <option value="processed">Processed</option>
-            <option value="paid">Paid</option>
-          </Select>
-        </div>
-      </Card>
+      {/* Enhanced Filter Bar */}
+      <div className="filter-bar-enterprise">
+        <div className="filter-row-top">
+          <Segment
+            value={status}
+            onChange={(v) => {
+              setStatus(v);
+              setPage(1);
+            }}
+            options={[
+              { value: '', label: 'All Statements' },
+              { value: 'draft', label: 'Draft' },
+              { value: 'processed', label: 'Processed' },
+              { value: 'paid', label: 'Paid' },
+            ]}
+          />
 
-      {loading ? (
-        <Loader />
-      ) : slips.length === 0 ? (
-        <Card><EmptyState icon={Wallet} title="No payslips found" message={canRun ? 'Generate payroll for a month to get started.' : 'Your payslips will appear here once processed.'} /></Card>
-      ) : (
-        <Card pad={false}>
-          <div className="table-wrap">
-            <table className="table">
-              <thead>
-                <tr>
-                  {canRun && <th>Employee</th>}
-                  <th>Period</th>
-                  <th>Gross</th>
-                  <th>Deductions</th>
-                  <th>Net Pay</th>
-                  <th>Status</th>
-                  <th style={{ textAlign: 'right' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {slips.map((p) => (
-                  <tr key={p._id}>
-                    {canRun && (
-                      <td>
-                        <div className="flex items-center gap-2">
-                          <Avatar name={fullName(p.employee)} src={p.employee?.avatar} size={32} />
-                          <div>
-                            <div className="strong text-sm">{fullName(p.employee)}</div>
-                            <div className="text-xs muted">{p.employee?.designation}</div>
-                          </div>
-                        </div>
-                      </td>
+          {hasActiveFilters && (
+            <button
+              className="btn btn-ghost btn-sm text-xs text-3"
+              onClick={resetFilters}
+              type="button"
+            >
+              <RotateCcw size={13} />
+              Reset Filters
+            </button>
+          )}
+        </div>
+
+        <div className="filter-row-controls">
+          <div className="filter-select" style={{ minWidth: 160 }}>
+            <Select
+              value={month}
+              onChange={(e) => {
+                setMonth(e.target.value);
+                setPage(1);
+              }}
+            >
+              <option value="">All Months</option>
+              {MONTHS.map((m, idx) => (
+                <option key={m} value={idx + 1}>
+                  {m}
+                </option>
+              ))}
+            </Select>
+          </div>
+
+          <div className="filter-select" style={{ minWidth: 140 }}>
+            <Select
+              value={year}
+              onChange={(e) => {
+                setYear(e.target.value);
+                setPage(1);
+              }}
+            >
+              <option value="">All Years</option>
+              {YEARS.map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </Select>
+          </div>
+        </div>
+      </div>
+
+      {/* Unified Enterprise DataTable */}
+      <DataTable
+        columns={columns}
+        data={slips}
+        loading={loading}
+        emptyIcon={Wallet}
+        emptyTitle="No payroll records found"
+        emptyMessage={
+          hasActiveFilters
+            ? 'No payslips match your current filters. Try resetting the filters.'
+            : 'No payroll records have been generated yet for this period.'
+        }
+        emptyAction={
+          hasActiveFilters ? (
+            <Button variant="secondary" icon={RotateCcw} onClick={resetFilters}>
+              Clear Filters
+            </Button>
+          ) : canRun ? (
+            <Button icon={Calculator} onClick={() => setGenOpen(true)}>
+              Generate Payroll Batch
+            </Button>
+          ) : null
+        }
+        pagination={{
+          page: data?.pagination?.page || 1,
+          pages: data?.pagination?.pages || 1,
+          total: totalSlips,
+          limit: 15,
+          onPage: setPage,
+        }}
+      />
+
+      {/* Generate Batch Modal */}
+      {genOpen && (
+        <Modal
+          open={genOpen}
+          onClose={() => setGenOpen(false)}
+          title="Run Monthly Payroll Batch"
+          subtitle="Calculate salaries and statutory deductions for all active staff"
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setGenOpen(false)} disabled={busy}>
+                Cancel
+              </Button>
+              <Button onClick={handleGenerate} loading={busy} icon={Calculator}>
+                Generate Batch
+              </Button>
+            </>
+          }
+        >
+          <form onSubmit={handleGenerate}>
+            <div className="form-grid-2">
+              <Field label="Payroll Month" required>
+                <Select value={genMonth} onChange={(e) => setGenMonth(e.target.value)}>
+                  {MONTHS.map((m, idx) => (
+                    <option key={m} value={idx + 1}>
+                      {m}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+
+              <Field label="Payroll Year" required>
+                <Select value={genYear} onChange={(e) => setGenYear(e.target.value)}>
+                  {YEARS.map((y) => (
+                    <option key={y} value={y}>
+                      {y}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+            <p className="text-xs text-3 mt-2" style={{ lineHeight: 1.5 }}>
+              This will automatically compute gross salary, PF contributions, professional tax, leave deductions, and net payable for all eligible employees for the selected period.
+            </p>
+          </form>
+        </Modal>
+      )}
+
+      {/* View / Print Payslip Modal */}
+      {viewSlip && (
+        <Modal
+          open={Boolean(viewSlip)}
+          onClose={() => setViewSlip(null)}
+          title="Salary Statement / Payslip"
+          subtitle={`Pay Period: ${monthName(viewSlip.month)} ${viewSlip.year}`}
+          size="lg"
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setViewSlip(null)}>
+                Close
+              </Button>
+              <Button icon={Printer} onClick={() => window.print()}>
+                Print Payslip
+              </Button>
+            </>
+          }
+        >
+          <div className="payslip-sheet printable-area">
+            {/* Payslip Header */}
+            <div className="payslip-header">
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <Building size={20} style={{ color: 'var(--primary)' }} />
+                  <span style={{ fontSize: 18, fontWeight: 700, letterSpacing: '-0.01em' }}>PeoplePay Inc.</span>
+                </div>
+                <div className="text-xs text-3">Enterprise HR &amp; Payroll Solutions</div>
+                <div className="text-xs text-3">GSTIN / Tax ID: 27AABCP1234F1Z5</div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontWeight: 700, fontSize: 16 }}>PAYSLIP</div>
+                <div className="text-xs text-3 font-mono">
+                  {monthName(viewSlip.month)?.toUpperCase()} {viewSlip.year}
+                </div>
+                <div className="mt-1">
+                  <Badge status={viewSlip.status}>{viewSlip.status}</Badge>
+                </div>
+              </div>
+            </div>
+
+            {/* Employee Meta Grid */}
+            <div className="grid-2 mb-4" style={{ fontSize: 13, borderBottom: '1px solid var(--border)', paddingBottom: 14 }}>
+              <div>
+                <div><strong>Employee:</strong> {fullName(viewSlip.employee)}</div>
+                <div className="text-xs text-3 mt-1"><strong>ID:</strong> {viewSlip.employee?.employeeId}</div>
+                <div className="text-xs text-3 mt-1"><strong>Designation:</strong> {viewSlip.employee?.designation}</div>
+              </div>
+              <div>
+                <div><strong>Department:</strong> {viewSlip.employee?.department?.name || 'General'}</div>
+                <div className="text-xs text-3 mt-1"><strong>Bank A/C:</strong> {viewSlip.employee?.bank?.accountNumber || '—'}</div>
+                <div className="text-xs text-3 mt-1"><strong>Payment Date:</strong> {viewSlip.paidAt ? fmtDate(viewSlip.paidAt) : 'Pending'}</div>
+              </div>
+            </div>
+
+            {/* Earnings & Deductions Table */}
+            <div className="grid-2 mb-4">
+              {/* Earnings */}
+              <div>
+                <table className="payslip-table">
+                  <thead>
+                    <tr>
+                      <th>Earnings Item</th>
+                      <th style={{ textAlign: 'right' }}>Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>Basic Salary</td>
+                      <td style={{ textAlign: 'right' }} className="font-mono">{money(viewSlip.basic || viewSlip.earnings?.basic)}</td>
+                    </tr>
+                    <tr>
+                      <td>House Rent Allowance (HRA)</td>
+                      <td style={{ textAlign: 'right' }} className="font-mono">{money(viewSlip.hra || viewSlip.earnings?.hra)}</td>
+                    </tr>
+                    <tr>
+                      <td>Special Allowances</td>
+                      <td style={{ textAlign: 'right' }} className="font-mono">{money(viewSlip.allowances || viewSlip.earnings?.allowances)}</td>
+                    </tr>
+                    {viewSlip.bonus > 0 && (
+                      <tr>
+                        <td>Performance Bonus</td>
+                        <td style={{ textAlign: 'right' }} className="font-mono">{money(viewSlip.bonus)}</td>
+                      </tr>
                     )}
-                    <td className="strong">{MONTHS[p.month - 1]} {p.year}</td>
-                    <td>{money(p.grossEarnings)}</td>
-                    <td style={{ color: 'var(--red)' }}>− {money(p.totalDeductions)}</td>
-                    <td className="strong">{money(p.netPay)}</td>
-                    <td><Badge status={p.status}>{p.status}</Badge></td>
-                    <td>
-                      <div className="flex gap-2 justify-end">
-                        <IconButton icon={Eye} size={16} onClick={() => setViewId(p._id)} title="View payslip" />
-                        {canRun && p.status !== 'paid' && (
-                          <IconButton icon={CheckCircle2} size={16} onClick={() => markPaid(p._id)} title="Mark paid" style={{ color: 'var(--green)' }} />
-                        )}
-                        {canRun && p.status !== 'paid' && (
-                          <IconButton icon={Trash2} size={16} onClick={() => setToDelete(p)} title="Delete" style={{ color: 'var(--red)' }} />
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    <tr style={{ fontWeight: 700, backgroundColor: 'var(--bg-subtle)' }}>
+                      <td>Total Gross Earnings</td>
+                      <td style={{ textAlign: 'right' }} className="font-mono">{money(viewSlip.grossEarnings || viewSlip.grossPay)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Deductions */}
+              <div>
+                <table className="payslip-table">
+                  <thead>
+                    <tr>
+                      <th>Deduction Item</th>
+                      <th style={{ textAlign: 'right' }}>Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>Provident Fund (PF)</td>
+                      <td style={{ textAlign: 'right', color: 'var(--red-text)' }} className="font-mono">
+                        {money(viewSlip.pf || viewSlip.deductions?.pf)}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>Professional Tax</td>
+                      <td style={{ textAlign: 'right', color: 'var(--red-text)' }} className="font-mono">
+                        {money(viewSlip.professionalTax || viewSlip.deductions?.tax)}
+                      </td>
+                    </tr>
+                    {(viewSlip.lopDeduction > 0) && (
+                      <tr>
+                        <td>Loss of Pay (LOP)</td>
+                        <td style={{ textAlign: 'right', color: 'var(--red-text)' }} className="font-mono">
+                          {money(viewSlip.lopDeduction)}
+                        </td>
+                      </tr>
+                    )}
+                    {((viewSlip.tax > 0) || (viewSlip.otherDeductions > 0)) && (
+                      <tr>
+                        <td>TDS / Other Deductions</td>
+                        <td style={{ textAlign: 'right', color: 'var(--red-text)' }} className="font-mono">
+                          {money((viewSlip.tax || 0) + (viewSlip.otherDeductions || 0))}
+                        </td>
+                      </tr>
+                    )}
+                    <tr style={{ fontWeight: 700, backgroundColor: 'var(--bg-subtle)' }}>
+                      <td>Total Deductions</td>
+                      <td style={{ textAlign: 'right', color: 'var(--red-text)' }} className="font-mono">
+                        {money(viewSlip.totalDeductions ?? ((viewSlip.pf || 0) + (viewSlip.professionalTax || 0) + (viewSlip.tax || 0) + (viewSlip.lopDeduction || 0) + (viewSlip.otherDeductions || 0)))}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Net Salary Banner */}
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                backgroundColor: 'var(--bg-subtle)',
+                padding: '12px 18px',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--border)',
+              }}
+            >
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>Net Take-Home Pay</div>
+                <div className="text-xs text-3">Amount transferred to salary account</div>
+              </div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--green-text)', fontFamily: 'var(--font-mono)' }}>
+                {money(viewSlip.netPay)}
+              </div>
+            </div>
           </div>
-          <div style={{ padding: '0 16px 16px' }}>
-            <Pagination page={data.pagination.page} pages={data.pagination.pages} total={data.pagination.total} onPage={setPage} />
-          </div>
-        </Card>
+        </Modal>
       )}
 
-      {canRun && <GenerateModal open={genOpen} onClose={() => setGenOpen(false)} onDone={refetch} />}
-      <PayslipModal id={viewId} onClose={() => setViewId(null)} />
+      {/* Delete Confirmation */}
       <ConfirmDialog
         open={Boolean(toDelete)}
         onClose={() => setToDelete(null)}
-        onConfirm={del}
+        onConfirm={handleDelete}
+        title="Delete Payslip"
+        message="Are you sure you want to delete this payslip record? This action cannot be undone."
+        confirmText="Delete Slip"
+        confirmVariant="danger"
         loading={busy}
-        title="Delete payslip?"
-        message="This payslip will be permanently removed. You can regenerate it later."
       />
     </>
-  );
-}
-
-function GenerateModal({ open, onClose, onDone }) {
-  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const [form, setForm] = useState({ month: prev.getMonth() + 1, year: prev.getFullYear(), bonus: 0, tax: 0 });
-  const [running, setRunning] = useState(false);
-
-  const run = async () => {
-    setRunning(true);
-    try {
-      const { data } = await api.post('/payroll/generate', {
-        month: Number(form.month), year: Number(form.year), bonus: Number(form.bonus) || 0, tax: Number(form.tax) || 0,
-      });
-      toast.success(data.message || 'Payroll generated');
-      onDone();
-      onClose();
-    } catch (err) {
-      toast.error(err.friendlyMessage);
-    } finally {
-      setRunning(false);
-    }
-  };
-
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="Generate Payroll"
-      footer={
-        <>
-          <Button variant="ghost" onClick={onClose} disabled={running}>Cancel</Button>
-          <Button icon={Sparkles} onClick={run} disabled={running}>{running ? 'Processing…' : 'Run payroll'}</Button>
-        </>
-      }
-    >
-      <p className="text-sm text-2 mb-4" style={{ lineHeight: 1.6 }}>
-        This generates payslips for all active employees for the selected month, using their salary structure and
-        recorded attendance (absences reduce pay). Already-paid payslips are skipped.
-      </p>
-      <div className="grid-2" style={{ gap: 14 }}>
-        <Field label="Month">
-          <Select value={form.month} onChange={(e) => setForm({ ...form, month: e.target.value })}>
-            {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
-          </Select>
-        </Field>
-        <Field label="Year">
-          <Select value={form.year} onChange={(e) => setForm({ ...form, year: e.target.value })}>
-            {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
-          </Select>
-        </Field>
-      </div>
-      <div className="grid-2 mt-4" style={{ gap: 14 }}>
-        <Field label="Bonus (applied to all)">
-          <Input type="number" value={form.bonus} onChange={(e) => setForm({ ...form, bonus: e.target.value })} />
-        </Field>
-        <Field label="Income tax / TDS (applied to all)">
-          <Input type="number" value={form.tax} onChange={(e) => setForm({ ...form, tax: e.target.value })} />
-        </Field>
-      </div>
-    </Modal>
-  );
-}
-
-function Row({ label, value, negative, strong }) {
-  return (
-    <div className="flex justify-between" style={{ padding: '7px 0' }}>
-      <span className={strong ? 'font-semi' : 'text-2 text-sm'}>{label}</span>
-      <span className={strong ? 'font-bold' : 'text-sm'} style={negative ? { color: 'var(--red)' } : undefined}>
-        {negative ? '− ' : ''}{money(value)}
-      </span>
-    </div>
-  );
-}
-
-function PayslipModal({ id, onClose }) {
-  const { data, loading } = useFetch(id ? `/payroll/${id}` : null, [id]);
-  const p = data?.data;
-
-  return (
-    <Modal open={Boolean(id)} onClose={onClose} size="lg" title="Payslip" footer={<Button variant="ghost" icon={Printer} onClick={() => window.print()}>Print</Button>}>
-      {loading || !p ? (
-        <div style={{ minHeight: 200 }}><Loader label="Loading payslip…" /></div>
-      ) : (
-        <div>
-          {/* Header */}
-          <div className="flex items-center justify-between flex-wrap gap-3 mb-4" style={{ padding: 16, borderRadius: 14, background: 'var(--gradient-soft)' }}>
-            <div className="flex items-center gap-3">
-              <Avatar name={fullName(p.employee)} src={p.employee?.avatar} size={48} />
-              <div>
-                <div className="font-bold text-lg">{fullName(p.employee)}</div>
-                <div className="text-xs muted">{p.employee?.designation} · {p.employee?.employeeId}</div>
-              </div>
-            </div>
-            <div className="text-right">
-              <div className="text-xs muted">Pay period</div>
-              <div className="font-bold">{MONTHS[p.month - 1]} {p.year}</div>
-              <Badge status={p.status}>{p.status}</Badge>
-            </div>
-          </div>
-
-          {/* Attendance snapshot */}
-          <div className="grid-stats mb-4" style={{ gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-            <div style={{ padding: 12, borderRadius: 12, background: 'var(--surface-2)', textAlign: 'center' }}>
-              <div className="font-bold text-lg">{p.workingDays}</div><div className="text-xs muted">Working days</div>
-            </div>
-            <div style={{ padding: 12, borderRadius: 12, background: 'var(--surface-2)', textAlign: 'center' }}>
-              <div className="font-bold text-lg" style={{ color: 'var(--green)' }}>{p.paidDays}</div><div className="text-xs muted">Paid days</div>
-            </div>
-            <div style={{ padding: 12, borderRadius: 12, background: 'var(--surface-2)', textAlign: 'center' }}>
-              <div className="font-bold text-lg" style={{ color: 'var(--red)' }}>{p.lopDays}</div><div className="text-xs muted">Loss of pay</div>
-            </div>
-          </div>
-
-          <div className="grid-2" style={{ gap: 20 }}>
-            <div>
-              <div className="text-xs font-bold muted mb-2" style={{ letterSpacing: '0.06em', textTransform: 'uppercase' }}>Earnings</div>
-              <Row label="Basic" value={p.basic} />
-              <Row label="HRA" value={p.hra} />
-              <Row label="Allowances" value={p.allowances} />
-              {p.bonus > 0 && <Row label="Bonus" value={p.bonus} />}
-              {p.overtimePay > 0 && <Row label="Overtime" value={p.overtimePay} />}
-              <div className="divider" style={{ margin: '8px 0' }} />
-              <Row label="Gross earnings" value={p.grossEarnings} strong />
-            </div>
-            <div>
-              <div className="text-xs font-bold muted mb-2" style={{ letterSpacing: '0.06em', textTransform: 'uppercase' }}>Deductions</div>
-              <Row label="Provident Fund" value={p.pf} negative />
-              <Row label="Professional Tax" value={p.professionalTax} negative />
-              {p.tax > 0 && <Row label="Income Tax (TDS)" value={p.tax} negative />}
-              {p.lopDeduction > 0 && <Row label="Loss of Pay" value={p.lopDeduction} negative />}
-              {p.otherDeductions > 0 && <Row label="Other" value={p.otherDeductions} negative />}
-              <div className="divider" style={{ margin: '8px 0' }} />
-              <Row label="Total deductions" value={p.totalDeductions} strong negative />
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between mt-6" style={{ padding: 18, borderRadius: 14, background: 'var(--gradient)', color: '#fff' }}>
-            <div>
-              <div className="text-sm" style={{ opacity: 0.9 }}>Net Payable</div>
-              <div className="text-xs" style={{ opacity: 0.8 }}>{p.paidAt ? `Paid on ${fmtDate(p.paidAt)}` : 'Amount credited to bank account'}</div>
-            </div>
-            <div className="text-2xl font-bold">{money(p.netPay)}</div>
-          </div>
-        </div>
-      )}
-    </Modal>
   );
 }

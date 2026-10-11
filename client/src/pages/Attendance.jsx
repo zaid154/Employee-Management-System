@@ -1,12 +1,15 @@
-import { useState } from 'react';
-import { CalendarCheck, LogIn, LogOut, Clock, Plus, Filter } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import {
+  CalendarCheck, LogIn, LogOut, Clock, Plus, RotateCcw,
+  RefreshCw
+} from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../lib/auth.jsx';
 import { useFetch } from '../lib/hooks.js';
 import { api } from '../lib/api.js';
 import {
-  PageHeader, Card, Button, Badge, Avatar, Loader, EmptyState, Select, Input,
-  Pagination, Modal, Field,
+  PageHeader, Card, CardHeader, Button, Badge, DataTable, UserCell, DateBadge,
+  Select, Input, Modal, Field, Segment,
 } from '../components/ui.jsx';
 import { fmtDate, fmtTime, fullName, fmtDateInput } from '../lib/format.js';
 import { canManage, isPrivileged, ATTENDANCE_STATUSES } from '../lib/constants.js';
@@ -14,6 +17,7 @@ import { canManage, isPrivileged, ATTENDANCE_STATUSES } from '../lib/constants.j
 export default function Attendance() {
   const { user } = useAuth();
   const manage = canManage(user.role);
+  const privileged = isPrivileged(user.role);
   const hasEmployee = Boolean(user.employee);
 
   const [page, setPage] = useState(1);
@@ -23,7 +27,8 @@ export default function Attendance() {
   const [to, setTo] = useState('');
 
   const query = new URLSearchParams({
-    page, limit: 15,
+    page,
+    limit: 15,
     ...(empFilter && { employee: empFilter }),
     ...(statusFilter && { status: statusFilter }),
     ...(from && { from }),
@@ -33,242 +38,427 @@ export default function Attendance() {
   const { data, loading, refetch } = useFetch(`/attendance?${query}`, [query]);
   const { data: today, refetch: refetchToday } = useFetch(hasEmployee ? '/attendance/today' : null);
   const { data: summary, refetch: refetchSummary } = useFetch(hasEmployee ? '/attendance/summary' : null);
-  const { data: options } = useFetch(isPrivileged(user.role) ? '/employees/options' : null);
+  const { data: options } = useFetch(privileged ? '/employees/options' : null);
 
   const [busy, setBusy] = useState(false);
   const [markOpen, setMarkOpen] = useState(false);
+  const [manualForm, setManualForm] = useState({
+    employeeId: '',
+    date: fmtDateInput(new Date()),
+    status: 'present',
+    checkInTime: '09:00',
+    checkOutTime: '18:00',
+  });
 
-  const punch = async (type) => {
+  const handlePunch = async (type) => {
     setBusy(true);
     try {
       await api.post(`/attendance/${type}`);
-      toast.success(type === 'check-in' ? 'Checked in ✅' : 'Checked out 👋');
-      refetchToday(); refetchSummary(); refetch();
+      toast.success(type === 'check-in' ? 'Check-in recorded successfully' : 'Check-out recorded successfully');
+      refetchToday();
+      refetchSummary();
+      refetch();
     } catch (err) {
-      toast.error(err.friendlyMessage);
+      toast.error(err.friendlyMessage || 'Action failed');
     } finally {
       setBusy(false);
     }
   };
 
+  const handleManualSubmit = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await api.post('/attendance/manual', manualForm);
+      toast.success('Attendance record logged successfully');
+      setMarkOpen(false);
+      refetch();
+    } catch (err) {
+      toast.error(err.friendlyMessage || 'Failed to record attendance');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const resetFilters = () => {
+    setEmpFilter('');
+    setStatusFilter('');
+    setFrom('');
+    setTo('');
+    setPage(1);
+  };
+
+  const hasActiveFilters = Boolean(empFilter || statusFilter || from || to);
+
   const att = today?.data;
   const sm = summary?.data;
   const records = data?.data || [];
+  const totalRecords = data?.pagination?.total ?? 0;
+
+  // Define Table Columns
+  const columns = useMemo(() => {
+    const cols = [];
+
+    if (privileged) {
+      cols.push({
+        header: 'Employee',
+        key: 'employee',
+        minWidth: 200,
+        render: (r) => {
+          const empName = fullName(r.employee) || 'Employee';
+          const empDept = r.employee?.department?.name || '';
+          const empId = r.employee?.employeeId || '';
+          const sub = [empId, empDept].filter(Boolean).join(' · ');
+          return <UserCell name={empName} avatar={r.employee?.avatar} subtitle={sub} />;
+        },
+      });
+    }
+
+    cols.push(
+      {
+        header: 'Date',
+        key: 'date',
+        minWidth: 140,
+        render: (r) => <DateBadge date={r.date} />,
+      },
+      {
+        header: 'Check In',
+        key: 'checkIn',
+        minWidth: 110,
+        className: 'table-cell-mono',
+        render: (r) =>
+          r.checkIn ? (
+            <span style={{ color: 'var(--text)' }}>{fmtTime(r.checkIn)}</span>
+          ) : (
+            <span className="text-3">—:—</span>
+          ),
+      },
+      {
+        header: 'Check Out',
+        key: 'checkOut',
+        minWidth: 110,
+        className: 'table-cell-mono',
+        render: (r) =>
+          r.checkOut ? (
+            <span style={{ color: 'var(--text)' }}>{fmtTime(r.checkOut)}</span>
+          ) : (
+            <span className="text-3">—:—</span>
+          ),
+      },
+      {
+        header: 'Work Hours',
+        key: 'workHours',
+        width: 110,
+        align: 'center',
+        render: (r) => (
+          <span className="table-days-pill font-mono">
+            {r.workHours != null ? `${r.workHours}h` : '0h'}
+          </span>
+        ),
+      },
+      {
+        header: 'Status',
+        key: 'status',
+        width: 120,
+        render: (r) => <Badge status={r.status}>{r.status}</Badge>,
+      }
+    );
+
+    return cols;
+  }, [privileged]);
 
   return (
     <>
       <PageHeader
-        title="Attendance"
-        subtitle="Track daily check-ins and working hours"
-        actions={manage && <Button icon={Plus} onClick={() => setMarkOpen(true)}>Mark Attendance</Button>}
+        title="Attendance & Time Tracking"
+        subtitle="Daily shift punch logs, monthly attendance summaries, and work hours"
+        actions={
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              icon={RefreshCw}
+              onClick={() => {
+                refetch();
+                if (hasEmployee) {
+                  refetchToday();
+                  refetchSummary();
+                }
+              }}
+              title="Refresh Data"
+            >
+              Refresh
+            </Button>
+            {manage && (
+              <Button icon={Plus} onClick={() => setMarkOpen(true)}>
+                Record Attendance
+              </Button>
+            )}
+          </div>
+        }
       />
 
+      {/* Individual Employee Live Punch Card + Monthly Summary */}
       {hasEmployee && (
         <div className="grid-2 mb-4">
-          <Card>
-            <div className="card-header">
-              <div className="card-title">Today · {fmtDate(new Date())}</div>
-              <Clock size={18} className="muted" />
-            </div>
-            <div className="flex gap-5 items-center flex-wrap">
-              <div className="flex gap-5">
+          <Card pad={false}>
+            <CardHeader
+              title={`Shift Status · Today, ${fmtDate(new Date())}`}
+              subtitle="Real-time check-in / check-out tracker"
+              action={<Clock size={16} className="text-3" />}
+            />
+            <div className="card-pad flex items-center justify-between flex-wrap gap-4">
+              <div className="flex gap-6">
                 <div>
-                  <div className="text-xs muted">Check in</div>
-                  <div className="font-bold text-xl">{att?.checkIn ? fmtTime(att.checkIn) : '—'}</div>
+                  <div className="text-xs text-3 font-medium">Check-In Time</div>
+                  <div className="font-bold text-lg font-mono mt-0.5">
+                    {att?.checkIn ? fmtTime(att.checkIn) : '—:—'}
+                  </div>
                 </div>
                 <div>
-                  <div className="text-xs muted">Check out</div>
-                  <div className="font-bold text-xl">{att?.checkOut ? fmtTime(att.checkOut) : '—'}</div>
+                  <div className="text-xs text-3 font-medium">Check-Out Time</div>
+                  <div className="font-bold text-lg font-mono mt-0.5">
+                    {att?.checkOut ? fmtTime(att.checkOut) : '—:—'}
+                  </div>
                 </div>
                 <div>
-                  <div className="text-xs muted mb-2">Status</div>
-                  {att ? <Badge status={att.status}>{att.status}</Badge> : <span className="muted text-sm">Not marked</span>}
+                  <div className="text-xs text-3 font-medium mb-1">Status</div>
+                  {att ? <Badge status={att.status}>{att.status}</Badge> : <span className="text-xs text-3">Not recorded</span>}
                 </div>
               </div>
-              <div style={{ marginLeft: 'auto' }}>
+              <div>
                 {!att?.checkIn ? (
-                  <Button icon={LogIn} onClick={() => punch('check-in')} disabled={busy}>Check in</Button>
+                  <Button icon={LogIn} onClick={() => handlePunch('check-in')} loading={busy}>
+                    Check In Now
+                  </Button>
                 ) : !att?.checkOut ? (
-                  <Button icon={LogOut} variant="ghost" onClick={() => punch('check-out')} disabled={busy}>Check out</Button>
+                  <Button variant="secondary" icon={LogOut} onClick={() => handlePunch('check-out')} loading={busy}>
+                    Check Out
+                  </Button>
                 ) : (
-                  <Badge status="approved">Done · {att.workHours}h</Badge>
+                  <Badge status="approved">Shift Completed ({att.workHours}h)</Badge>
                 )}
               </div>
             </div>
           </Card>
 
-          <Card>
-            <div className="card-title mb-4">This Month&apos;s Summary</div>
-            {sm ? (
-              <div className="grid-stats" style={{ gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
-                {[
-                  { label: 'Present', value: sm.present, color: '#10b981' },
-                  { label: 'Late', value: sm.late, color: '#f59e0b' },
-                  { label: 'Absent', value: sm.absent, color: '#ef4444' },
-                  { label: 'Hours', value: sm.totalHours, color: '#6366f1' },
-                ].map((x) => (
-                  <div key={x.label} style={{ padding: 12, borderRadius: 12, background: 'var(--surface-2)', textAlign: 'center' }}>
-                    <div className="font-bold text-xl" style={{ color: x.color }}>{x.value}</div>
-                    <div className="text-xs muted">{x.label}</div>
+          <Card pad={false}>
+            <CardHeader
+              title="This Month's Summary"
+              subtitle="Cumulative monthly attendance counts"
+            />
+            <div className="card-pad">
+              {sm ? (
+                <div className="grid-3">
+                  <div style={{ padding: '8px 12px', borderRadius: 'var(--radius-sm)', backgroundColor: 'var(--bg-subtle)' }}>
+                    <div className="text-lg font-bold font-mono" style={{ color: 'var(--green-text)' }}>
+                      {sm.present ?? 0}
+                    </div>
+                    <div className="text-xs text-3">Days Present</div>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <span className="muted text-sm">No records this month.</span>
-            )}
+                  <div style={{ padding: '8px 12px', borderRadius: 'var(--radius-sm)', backgroundColor: 'var(--bg-subtle)' }}>
+                    <div className="text-lg font-bold font-mono" style={{ color: 'var(--amber-text)' }}>
+                      {sm.late ?? 0}
+                    </div>
+                    <div className="text-xs text-3">Late Arrivals</div>
+                  </div>
+                  <div style={{ padding: '8px 12px', borderRadius: 'var(--radius-sm)', backgroundColor: 'var(--bg-subtle)' }}>
+                    <div className="text-lg font-bold font-mono text-primary">
+                      {sm.totalHours ?? 0}h
+                    </div>
+                    <div className="text-xs text-3">Total Work Hours</div>
+                  </div>
+                </div>
+              ) : (
+                <span className="text-xs text-3">No monthly summary records available</span>
+              )}
+            </div>
           </Card>
         </div>
       )}
 
-      {/* Filters */}
-      <Card className="mb-4" style={{ padding: 16 }}>
-        <div className="toolbar" style={{ margin: 0 }}>
-          <Filter size={16} className="muted" />
-          {isPrivileged(user.role) && (
-            <Select value={empFilter} onChange={(e) => { setEmpFilter(e.target.value); setPage(1); }} style={{ minWidth: 190 }}>
-              <option value="">All employees</option>
-              {(options?.data || []).map((m) => <option key={m._id} value={m._id}>{m.firstName} {m.lastName}</option>)}
-            </Select>
+      {/* Enhanced Filter Bar */}
+      <div className="filter-bar-enterprise">
+        <div className="filter-row-top">
+          <Segment
+            value={statusFilter}
+            onChange={(v) => {
+              setStatusFilter(v);
+              setPage(1);
+            }}
+            options={[
+              { value: '', label: 'All Statuses' },
+              { value: 'present', label: 'Present' },
+              { value: 'late', label: 'Late Arrival' },
+              { value: 'half-day', label: 'Half Day' },
+              { value: 'absent', label: 'Absent' },
+              { value: 'on-leave', label: 'On Leave' },
+            ]}
+          />
+
+          {hasActiveFilters && (
+            <button
+              className="btn btn-ghost btn-sm text-xs text-3"
+              onClick={resetFilters}
+              type="button"
+            >
+              <RotateCcw size={13} />
+              Reset Filters
+            </button>
           )}
-          <Select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }} style={{ minWidth: 140 }}>
-            <option value="">All statuses</option>
-            {ATTENDANCE_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-          </Select>
+        </div>
+
+        <div className="filter-row-controls">
+          {privileged && (
+            <div className="filter-select" style={{ minWidth: 220 }}>
+              <Select
+                value={empFilter}
+                onChange={(e) => {
+                  setEmpFilter(e.target.value);
+                  setPage(1);
+                }}
+              >
+                <option value="">All Employees</option>
+                {(options?.data || []).map((m) => (
+                  <option key={m._id} value={m._id}>
+                    {m.firstName} {m.lastName} ({m.employeeId})
+                  </option>
+                ))}
+              </Select>
+            </div>
+          )}
+
           <div className="flex items-center gap-2">
-            <span className="text-xs muted">From</span>
-            <Input type="date" value={from} onChange={(e) => { setFrom(e.target.value); setPage(1); }} style={{ width: 150 }} />
+            <span className="text-xs text-3 font-medium">From:</span>
+            <Input
+              type="date"
+              value={from}
+              onChange={(e) => {
+                setFrom(e.target.value);
+                setPage(1);
+              }}
+              style={{ width: 145 }}
+            />
           </div>
+
           <div className="flex items-center gap-2">
-            <span className="text-xs muted">To</span>
-            <Input type="date" value={to} onChange={(e) => { setTo(e.target.value); setPage(1); }} style={{ width: 150 }} />
+            <span className="text-xs text-3 font-medium">To:</span>
+            <Input
+              type="date"
+              value={to}
+              onChange={(e) => {
+                setTo(e.target.value);
+                setPage(1);
+              }}
+              style={{ width: 145 }}
+            />
           </div>
         </div>
-      </Card>
+      </div>
 
-      {loading ? (
-        <Loader />
-      ) : records.length === 0 ? (
-        <Card><EmptyState icon={CalendarCheck} title="No attendance records" message="Records will appear here as employees check in." /></Card>
-      ) : (
-        <Card pad={false}>
-          <div className="table-wrap">
-            <table className="table">
-              <thead>
-                <tr>
-                  {isPrivileged(user.role) && <th>Employee</th>}
-                  <th>Date</th>
-                  <th>Check in</th>
-                  <th>Check out</th>
-                  <th>Hours</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {records.map((r) => (
-                  <tr key={r._id}>
-                    {isPrivileged(user.role) && (
-                      <td>
-                        <div className="flex items-center gap-2">
-                          <Avatar name={fullName(r.employee)} src={r.employee?.avatar} size={32} />
-                          <div>
-                            <div className="strong text-sm">{fullName(r.employee)}</div>
-                            <div className="text-xs muted">{r.employee?.employeeId}</div>
-                          </div>
-                        </div>
-                      </td>
-                    )}
-                    <td className="strong">{fmtDate(r.date)}</td>
-                    <td>{r.checkIn ? fmtTime(r.checkIn) : '—'}</td>
-                    <td>{r.checkOut ? fmtTime(r.checkOut) : '—'}</td>
-                    <td>{r.workHours ? `${r.workHours}h` : '—'}</td>
-                    <td><Badge status={r.status}>{r.status}</Badge></td>
-                  </tr>
+      {/* Unified Enterprise DataTable */}
+      <DataTable
+        columns={columns}
+        data={records}
+        loading={loading}
+        emptyIcon={CalendarCheck}
+        emptyTitle="No attendance records found"
+        emptyMessage={
+          hasActiveFilters
+            ? 'No attendance records match your current filter settings. Try clearing active filters.'
+            : 'Attendance logs will appear here automatically when employees punch in or shifts are recorded.'
+        }
+        emptyAction={
+          hasActiveFilters ? (
+            <Button variant="secondary" icon={RotateCcw} onClick={resetFilters}>
+              Reset Filters
+            </Button>
+          ) : null
+        }
+        pagination={{
+          page: data?.pagination?.page || 1,
+          pages: data?.pagination?.pages || 1,
+          total: totalRecords,
+          limit: 15,
+          onPage: setPage,
+        }}
+      />
+
+      {/* Manual Entry Modal */}
+      {markOpen && (
+        <Modal
+          open={markOpen}
+          onClose={() => setMarkOpen(false)}
+          title="Record Manual Attendance"
+          subtitle="Add or adjust employee attendance record for any date"
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setMarkOpen(false)} disabled={busy}>
+                Cancel
+              </Button>
+              <Button onClick={handleManualSubmit} loading={busy}>
+                Save Record
+              </Button>
+            </>
+          }
+        >
+          <form onSubmit={handleManualSubmit}>
+            <Field label="Employee" required>
+              <Select
+                value={manualForm.employeeId}
+                onChange={(e) => setManualForm({ ...manualForm, employeeId: e.target.value })}
+                required
+              >
+                <option value="">Select Employee</option>
+                {(options?.data || []).map((m) => (
+                  <option key={m._id} value={m._id}>
+                    {m.firstName} {m.lastName} ({m.employeeId})
+                  </option>
                 ))}
-              </tbody>
-            </table>
-          </div>
-          <div style={{ padding: '0 16px 16px' }}>
-            <Pagination page={data.pagination.page} pages={data.pagination.pages} total={data.pagination.total} onPage={setPage} />
-          </div>
-        </Card>
-      )}
+              </Select>
+            </Field>
 
-      {manage && (
-        <MarkModal open={markOpen} onClose={() => setMarkOpen(false)} onSaved={refetch} options={options?.data || []} />
+            <div className="form-grid-2">
+              <Field label="Date" required>
+                <Input
+                  type="date"
+                  value={manualForm.date}
+                  onChange={(e) => setManualForm({ ...manualForm, date: e.target.value })}
+                  required
+                />
+              </Field>
+              <Field label="Attendance Status" required>
+                <Select
+                  value={manualForm.status}
+                  onChange={(e) => setManualForm({ ...manualForm, status: e.target.value })}
+                >
+                  {ATTENDANCE_STATUSES.map((s) => (
+                    <option key={s} value={s} className="capitalize">
+                      {s}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+
+            <div className="form-grid-2">
+              <Field label="Check-In Time">
+                <Input
+                  type="time"
+                  value={manualForm.checkInTime}
+                  onChange={(e) => setManualForm({ ...manualForm, checkInTime: e.target.value })}
+                />
+              </Field>
+              <Field label="Check-Out Time">
+                <Input
+                  type="time"
+                  value={manualForm.checkOutTime}
+                  onChange={(e) => setManualForm({ ...manualForm, checkOutTime: e.target.value })}
+                />
+              </Field>
+            </div>
+          </form>
+        </Modal>
       )}
     </>
-  );
-}
-
-function MarkModal({ open, onClose, onSaved, options }) {
-  const [form, setForm] = useState({ employee: '', date: fmtDateInput(new Date()), status: 'present', checkIn: '', checkOut: '', note: '' });
-  const [saving, setSaving] = useState(false);
-
-  const save = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-    try {
-      const payload = {
-        employee: form.employee,
-        date: form.date,
-        status: form.status,
-        note: form.note,
-        checkIn: form.checkIn ? new Date(`${form.date}T${form.checkIn}`) : null,
-        checkOut: form.checkOut ? new Date(`${form.date}T${form.checkOut}`) : null,
-      };
-      await api.post('/attendance/mark', payload);
-      toast.success('Attendance recorded');
-      onSaved();
-      onClose();
-      setForm({ employee: '', date: fmtDateInput(new Date()), status: 'present', checkIn: '', checkOut: '', note: '' });
-    } catch (err) {
-      toast.error(err.friendlyMessage);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="Mark Attendance"
-      footer={
-        <>
-          <Button variant="ghost" onClick={onClose} disabled={saving}>Cancel</Button>
-          <Button onClick={save} disabled={saving || !form.employee}>{saving ? 'Saving…' : 'Save'}</Button>
-        </>
-      }
-    >
-      <form onSubmit={save} className="flex-col gap-4">
-        <Field label="Employee" required>
-          <Select value={form.employee} onChange={(e) => setForm({ ...form, employee: e.target.value })} required>
-            <option value="">Select employee</option>
-            {options.map((m) => <option key={m._id} value={m._id}>{m.firstName} {m.lastName} · {m.employeeId}</option>)}
-          </Select>
-        </Field>
-        <div className="grid-2" style={{ gap: 14 }}>
-          <Field label="Date" required>
-            <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} required />
-          </Field>
-          <Field label="Status">
-            <Select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
-              {ATTENDANCE_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-            </Select>
-          </Field>
-        </div>
-        <div className="grid-2" style={{ gap: 14 }}>
-          <Field label="Check in time">
-            <Input type="time" value={form.checkIn} onChange={(e) => setForm({ ...form, checkIn: e.target.value })} />
-          </Field>
-          <Field label="Check out time">
-            <Input type="time" value={form.checkOut} onChange={(e) => setForm({ ...form, checkOut: e.target.value })} />
-          </Field>
-        </div>
-        <Field label="Note">
-          <Input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="Optional" />
-        </Field>
-      </form>
-    </Modal>
   );
 }

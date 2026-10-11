@@ -41,31 +41,82 @@ export const applyLeave = asyncHandler(async (req, res) => {
   res.status(201).json({ success: true, data: leave });
 });
 
-/** GET /api/leaves — access-scoped list with optional status/type filters. */
+/** GET /api/leaves — access-scoped list with optional status/type/dept/search filters. */
 export const listLeaves = asyncHandler(async (req, res) => {
-  const { status, type, employee, page = 1, limit = 15 } = req.query;
+  const { status, type, department, search, employee, page = 1, limit = 15 } = req.query;
   const filter = await scopeToEmployees(req.user);
   if (status) filter.status = status;
   if (type) filter.type = type;
   if (employee && isPrivileged(req.user)) filter.employee = employee;
 
+  if (department) {
+    const deptEmployees = await Employee.find({ department }).select('_id');
+    const deptEmpIds = deptEmployees.map((e) => e._id);
+    if (filter.employee) {
+      if (filter.employee.$in) {
+        filter.employee.$in = filter.employee.$in.filter((id) => deptEmpIds.some((did) => String(did) === String(id)));
+      } else {
+        const matches = deptEmpIds.some((did) => String(did) === String(filter.employee));
+        if (!matches) filter.employee = { $in: [] };
+      }
+    } else {
+      filter.employee = { $in: deptEmpIds };
+    }
+  }
+
+  if (search && search.trim()) {
+    const s = search.trim();
+    const regex = new RegExp(s, 'i');
+    const matchedEmps = await Employee.find({
+      $or: [
+        { firstName: regex },
+        { lastName: regex },
+        { employeeId: regex },
+        { email: regex },
+      ],
+    }).select('_id');
+    const matchedEmpIds = matchedEmps.map((e) => e._id);
+    
+    filter.$or = [
+      { employee: { $in: matchedEmpIds } },
+      { reason: regex },
+      { type: regex },
+    ];
+  }
+
   const pageNum = Math.max(1, Number(page));
   const perPage = Math.min(100, Number(limit));
 
-  const [items, total] = await Promise.all([
+  // Base scope for tab count metrics
+  const baseFilter = await scopeToEmployees(req.user);
+
+  const [items, total, pendingCount, approvedCount, rejectedCount] = await Promise.all([
     Leave.find(filter)
-      .populate('employee', 'firstName lastName employeeId avatar department')
-      .populate('reviewedBy', 'name')
+      .populate({
+        path: 'employee',
+        select: 'firstName lastName employeeId avatar designation department',
+        populate: { path: 'department', select: 'name code' },
+      })
+      .populate('reviewedBy', 'name email role')
       .sort('-createdAt')
       .skip((pageNum - 1) * perPage)
       .limit(perPage)
       .lean(),
     Leave.countDocuments(filter),
+    Leave.countDocuments({ ...baseFilter, status: 'pending' }),
+    Leave.countDocuments({ ...baseFilter, status: 'approved' }),
+    Leave.countDocuments({ ...baseFilter, status: 'rejected' }),
   ]);
 
   res.json({
     success: true,
     data: items,
+    counts: {
+      all: total,
+      pending: pendingCount,
+      approved: approvedCount,
+      rejected: rejectedCount,
+    },
     pagination: { page: pageNum, limit: perPage, total, pages: Math.ceil(total / perPage) },
   });
 });

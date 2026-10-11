@@ -23,7 +23,6 @@ export function useFetch(url, deps = []) {
     } finally {
       if (mounted.current) setLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url]);
 
   useEffect(() => {

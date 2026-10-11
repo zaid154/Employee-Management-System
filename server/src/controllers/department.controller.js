@@ -6,7 +6,7 @@ import { Employee } from '../models/Employee.js';
 /** GET /api/departments */
 export const listDepartments = asyncHandler(async (_req, res) => {
   const departments = await Department.find()
-    .populate('head', 'firstName lastName employeeId avatar')
+    .populate('head', 'firstName lastName employeeId avatar designation')
     .sort('name')
     .lean();
 
@@ -19,7 +19,14 @@ export const listDepartments = asyncHandler(async (_req, res) => {
 
   res.json({
     success: true,
-    data: departments.map((d) => ({ ...d, headcount: countMap[String(d._id)] || 0 })),
+    data: departments.map((d) => {
+      const count = countMap[String(d._id)] || 0;
+      return {
+        ...d,
+        headcount: count,
+        employeeCount: count,
+      };
+    }),
   });
 });
 

@@ -34,7 +34,7 @@ export const errorHandler = (err, _req, res, _next) => {
     payload.message = err.message;
   }
 
-  if (statusCode === 500) console.error('💥 Unhandled error:', err);
+  if (statusCode === 500) console.error('[ERROR] Unhandled server error:', err);
 
   res.status(statusCode).json(payload);
 };

@@ -81,7 +81,7 @@ function buildSalary(basic) {
 
 async function run() {
   await connectDB();
-  console.log('🌱 Seeding EMS & Payroll database...');
+  console.log('[INFO] Seeding EMS & Payroll database...');
   await clearAll();
 
   // 1. Departments
@@ -283,7 +283,7 @@ async function run() {
   const adminUser = await User.findOne({ role: ROLES.ADMIN });
   await Announcement.insertMany([
     {
-      title: 'Welcome to the new HR Portal 🎉',
+      title: 'Welcome to the PeoplePay HR & Payroll Platform',
       body: 'Our new Employee Management & Payroll System is live. Check in daily, apply for leave, and download your payslips right here.',
       category: 'general',
       pinned: true,
@@ -304,7 +304,7 @@ async function run() {
   ]);
   console.log('   • 3 announcements');
 
-  console.log('\n✅ Seed complete!\n');
+  console.log('\n[SUCCESS] Seed complete!\n');
   console.log('   Demo logins:');
   demoLogins.forEach((l) => console.log(`   - ${l.role.padEnd(9)} ${l.email} / ${l.password}`));
   console.log('');

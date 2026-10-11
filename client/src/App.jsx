@@ -1,5 +1,4 @@
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { AnimatePresence, motion } from 'framer-motion';
+import { Routes, Route } from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 import AppLayout from './components/AppLayout.jsx';
 import { ROLES } from './lib/constants.js';
@@ -17,61 +16,62 @@ import Reports from './pages/Reports.jsx';
 import Announcements from './pages/Announcements.jsx';
 import Holidays from './pages/Holidays.jsx';
 import Profile from './pages/Profile.jsx';
+import Settings from './pages/Settings.jsx';
 import NotFound from './pages/NotFound.jsx';
 
-// Fade/slide wrapper so page transitions feel smooth.
-function Page({ children }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -6 }}
-      transition={{ duration: 0.25 }}
-    >
-      {children}
-    </motion.div>
-  );
-}
-
 const mgmt = [ROLES.ADMIN, ROLES.HR, ROLES.MANAGER];
+const adminHr = [ROLES.ADMIN, ROLES.HR];
 
 export default function App() {
-  const location = useLocation();
-
   return (
-    <AnimatePresence mode="wait">
-      <Routes location={location} key={location.pathname}>
-        <Route path="/login" element={<Login />} />
+    <Routes>
+      <Route path="/login" element={<Login initialTab="login" />} />
+      <Route path="/register" element={<Login initialTab="register" />} />
 
+      <Route
+        element={
+          <ProtectedRoute>
+            <AppLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<Dashboard />} />
+        <Route path="employees" element={<Employees />} />
+        <Route path="employees/:id" element={<EmployeeDetail />} />
         <Route
+          path="departments"
           element={
-            <ProtectedRoute>
-              <AppLayout />
+            <ProtectedRoute roles={mgmt}>
+              <Departments />
             </ProtectedRoute>
           }
-        >
-          <Route index element={<Page><Dashboard /></Page>} />
-          <Route path="employees" element={<Page><Employees /></Page>} />
-          <Route path="employees/:id" element={<Page><EmployeeDetail /></Page>} />
-          <Route
-            path="departments"
-            element={<ProtectedRoute roles={mgmt}><Page><Departments /></Page></ProtectedRoute>}
-          />
-          <Route path="attendance" element={<Page><Attendance /></Page>} />
-          <Route path="leaves" element={<Page><Leaves /></Page>} />
-          <Route path="payroll" element={<Page><Payroll /></Page>} />
-          <Route path="performance" element={<Page><Performance /></Page>} />
-          <Route
-            path="reports"
-            element={<ProtectedRoute roles={mgmt}><Page><Reports /></Page></ProtectedRoute>}
-          />
-          <Route path="announcements" element={<Page><Announcements /></Page>} />
-          <Route path="holidays" element={<Page><Holidays /></Page>} />
-          <Route path="profile" element={<Page><Profile /></Page>} />
-        </Route>
+        />
+        <Route path="attendance" element={<Attendance />} />
+        <Route path="leaves" element={<Leaves />} />
+        <Route path="payroll" element={<Payroll />} />
+        <Route path="performance" element={<Performance />} />
+        <Route
+          path="reports"
+          element={
+            <ProtectedRoute roles={mgmt}>
+              <Reports />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="announcements" element={<Announcements />} />
+        <Route path="holidays" element={<Holidays />} />
+        <Route path="profile" element={<Profile />} />
+        <Route
+          path="settings"
+          element={
+            <ProtectedRoute roles={adminHr}>
+              <Settings />
+            </ProtectedRoute>
+          }
+        />
+      </Route>
 
-        <Route path="*" element={<NotFound />} />
-      </Routes>
-    </AnimatePresence>
+      <Route path="*" element={<NotFound />} />
+    </Routes>
   );
 }

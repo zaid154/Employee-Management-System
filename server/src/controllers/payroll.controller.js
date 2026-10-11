@@ -59,7 +59,11 @@ export const listPayroll = asyncHandler(async (req, res) => {
 
   const [items, total, totals] = await Promise.all([
     Payroll.find(filter)
-      .populate('employee', 'firstName lastName employeeId avatar designation')
+      .populate({
+        path: 'employee',
+        select: 'firstName lastName employeeId avatar designation department',
+        populate: { path: 'department', select: 'name code' },
+      })
       .sort('-year -month')
       .skip((pageNum - 1) * perPage)
       .limit(perPage)
