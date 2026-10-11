@@ -29,6 +29,7 @@ export default function Attendance() {
 
   const activePreset = useMemo(() => {
     if (!from && !to) return 'all';
+    if (from === '2026-10-09' && to === '2026-10-09') return 'oct9';
     if (from === todayStr && to === todayStr) return 'today';
     const now = new Date();
     const day = now.getDay();
@@ -44,7 +45,10 @@ export default function Attendance() {
 
   const handlePreset = (type) => {
     const now = new Date();
-    if (type === 'today') {
+    if (type === 'oct9') {
+      setFrom('2026-10-09');
+      setTo('2026-10-09');
+    } else if (type === 'today') {
       setFrom(todayStr);
       setTo(todayStr);
     } else if (type === 'week') {
@@ -394,14 +398,14 @@ export default function Attendance() {
               className={`date-preset-btn ${activePreset === 'all' ? 'active' : ''}`}
               onClick={() => handlePreset('all')}
             >
-              All Time
+              All Records
             </button>
             <button
               type="button"
-              className={`date-preset-btn ${activePreset === 'today' ? 'active' : ''}`}
-              onClick={() => handlePreset('today')}
+              className={`date-preset-btn ${activePreset === 'oct9' ? 'active' : ''}`}
+              onClick={() => handlePreset('oct9')}
             >
-              Today
+              9 Oct (Friday)
             </button>
             <button
               type="button"
@@ -417,6 +421,13 @@ export default function Attendance() {
             >
               This Month
             </button>
+            <button
+              type="button"
+              className={`date-preset-btn ${activePreset === 'today' ? 'active' : ''}`}
+              onClick={() => handlePreset('today')}
+            >
+              Today
+            </button>
           </div>
 
           <div className="flex items-center gap-2">
@@ -424,14 +435,12 @@ export default function Attendance() {
             <Input
               type="date"
               value={from}
-              max={to || todayStr}
+              max={todayStr}
               onChange={(e) => {
                 const val = e.target.value;
-                if (val && val > todayStr) {
-                  toast.error('Attendance dates cannot be in the future');
-                  setFrom(todayStr);
-                } else {
-                  setFrom(val);
+                setFrom(val);
+                if (val && (!to || to < val)) {
+                  setTo(val);
                 }
                 setPage(1);
               }}
@@ -444,18 +453,12 @@ export default function Attendance() {
             <Input
               type="date"
               value={to}
-              min={from || undefined}
               max={todayStr}
               onChange={(e) => {
                 const val = e.target.value;
-                if (val && val > todayStr) {
-                  toast.error('Attendance dates cannot be in the future');
-                  setTo(todayStr);
-                } else if (from && val < from) {
-                  toast.error('"To" date cannot be before "From" date');
-                  setTo(from);
-                } else {
-                  setTo(val);
+                setTo(val);
+                if (val && from && val < from) {
+                  setFrom(val);
                 }
                 setPage(1);
               }}
@@ -469,14 +472,19 @@ export default function Attendance() {
       <div className="attendance-filter-summary">
         <div>
           Showing <strong>{totalRecords}</strong> attendance {totalRecords === 1 ? 'record' : 'records'}
-          {from || to ? (
+          {from && to && from === to ? (
             <span>
-              {' '}· Date Filter: <strong>{from ? fmtDate(from) : 'Beginning'}</strong> to <strong>{to ? fmtDate(to) : 'Today'}</strong>
+              {' '}· Date: <strong>{fmtDate(from)}</strong> (Single Day View)
+            </span>
+          ) : from || to ? (
+            <span>
+              {' '}· Date Range: <strong>{from ? fmtDate(from) : 'Beginning'}</strong> to <strong>{to ? fmtDate(to) : 'Today'}</strong>
             </span>
           ) : (
-            <span> · All dates (sorted newest first)</span>
+            <span> · All Records (1-Month History, Newest First)</span>
           )}
-          {statusFilter && <span> · Status: <span className="capitalize font-semibold">{statusFilter}</span></span>}
+          {statusFilter && <span> · Status: <span className="capitalize font-semibold text-1">{statusFilter}</span></span>}
+          {empFilter && <span> · Filtered by Employee</span>}
         </div>
         {hasActiveFilters && (
           <button
