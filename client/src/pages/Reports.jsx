@@ -87,7 +87,7 @@ export default function Reports() {
             action={<Users size={16} className="muted" />}
           />
           <div className="card-pad">
-            {l1 ? <Loader /> : deptBars.length ? <DistributionBarChart data={deptBars} /> : <EmptyState title="No headcount data" />}
+            {l1 ? <Loader label="" size={24} /> : deptBars.length ? <DistributionBarChart data={deptBars} /> : <EmptyState title="No headcount data" />}
           </div>
         </Card>
 
@@ -98,7 +98,7 @@ export default function Reports() {
             action={<PieChart size={16} className="muted" />}
           />
           <div className="card-pad">
-            {l1 ? <Loader /> : <DonutChart data={typeData} centerLabel="Total" />}
+            {l1 ? <Loader label="" size={24} /> : <DonutChart data={typeData} centerLabel="Total" />}
           </div>
         </Card>
       </div>
@@ -111,7 +111,7 @@ export default function Reports() {
             action={<CalendarDays size={16} className="muted" />}
           />
           <div className="card-pad">
-            {l3 ? <Loader /> : leaveTypeBars.length ? <DistributionBarChart data={leaveTypeBars} /> : <EmptyState title="No leave data" />}
+            {l3 ? <Loader label="" size={24} /> : leaveTypeBars.length ? <DistributionBarChart data={leaveTypeBars} /> : <EmptyState title="No leave data" />}
           </div>
         </Card>
 
@@ -124,7 +124,7 @@ export default function Reports() {
             />
             <div className="card-pad">
               {l4 ? (
-                <Loader />
+                <Loader label="" size={24} />
               ) : payroll?.data?.totals ? (
                 <div className="flex-col gap-4">
                   <div style={{ padding: 16, borderRadius: 'var(--radius-sm)', backgroundColor: 'var(--bg-subtle)' }}>

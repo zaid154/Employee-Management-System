@@ -1,7 +1,7 @@
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiError } from '../utils/apiError.js';
 import { Performance } from '../models/Performance.js';
-import { scopeToEmployees, ownEmployeeId, isPrivileged } from '../utils/access.js';
+import { scopeToEmployees, ownEmployeeId, isPrivileged, teamEmployeeIds } from '../utils/access.js';
 
 /** GET /api/performance — access-scoped review list. */
 export const listReviews = asyncHandler(async (req, res) => {
@@ -49,6 +49,16 @@ export const getReview = asyncHandler(async (req, res) => {
 export const createReview = asyncHandler(async (req, res) => {
   const payload = { ...req.body };
   if (!payload.reviewer) payload.reviewer = ownEmployeeId(req.user);
+
+  // Managers may only submit reviews for their direct reports
+  if (req.user.role === 'manager') {
+    const targetId = String(payload.employeeId || payload.employee);
+    const allowedIds = await teamEmployeeIds(req.user);
+    if (!allowedIds.includes(targetId)) {
+      throw ApiError.forbidden('You can only review members of your team');
+    }
+  }
+
   const review = await Performance.create(payload);
   res.status(201).json({ success: true, data: review });
 });
@@ -57,6 +67,14 @@ export const createReview = asyncHandler(async (req, res) => {
 export const updateReview = asyncHandler(async (req, res) => {
   const review = await Performance.findById(req.params.id);
   if (!review) throw ApiError.notFound('Review not found');
+
+  // Managers may only update reviews for their direct reports
+  if (req.user.role === 'manager') {
+    const allowedIds = await teamEmployeeIds(req.user);
+    if (!allowedIds.includes(String(review.employee))) {
+      throw ApiError.forbidden('You can only update reviews for your team members');
+    }
+  }
 
   Object.assign(review, req.body);
   await review.save(); // triggers overallScore recompute

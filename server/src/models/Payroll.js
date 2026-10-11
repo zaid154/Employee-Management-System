@@ -33,6 +33,9 @@ const payrollSchema = new mongoose.Schema(
 
     status: { type: String, enum: PAYROLL_STATUS, default: 'draft', index: true },
     paidAt: { type: Date, default: null },
+    paymentReference: { type: String, default: '' },
+    paymentMethod: { type: String, default: 'bank_transfer' },
+    paidBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     note: { type: String, default: '' },
     generatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   },

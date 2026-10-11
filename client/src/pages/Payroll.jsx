@@ -9,7 +9,7 @@ import { useFetch } from '../lib/hooks.js';
 import { api } from '../lib/api.js';
 import {
   PageHeader, Button, Badge, DataTable, UserCell, DateBadge, Select,
-  Modal, Field, IconButton, ConfirmDialog, Segment,
+  Modal, Field, IconButton, ConfirmDialog, Input,
 } from '../components/ui.jsx';
 import { money, fmtDate, fullName, MONTHS, monthName } from '../lib/format.js';
 import { isPrivileged } from '../lib/constants.js';
@@ -44,15 +44,46 @@ export default function Payroll() {
   const [toDelete, setToDelete] = useState(null);
   const [busy, setBusy] = useState(false);
 
-  const markPaid = useCallback(async (id) => {
+  // Payment Recording Modal State
+  const [paySlipTarget, setPaySlipTarget] = useState(null);
+  const [payMethod, setPayMethod] = useState('bank_transfer');
+  const [payRef, setPayRef] = useState('');
+  const [paidAtDate, setPaidAtDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [payNote, setPayNote] = useState('');
+  const [paying, setPaying] = useState(false);
+
+  const openPaymentModal = useCallback((slip) => {
+    setPaySlipTarget(slip);
+    setPayMethod('bank_transfer');
+    setPayRef(`UTR-${Date.now().toString(36).toUpperCase()}`);
+    setPaidAtDate(new Date().toISOString().split('T')[0]);
+    setPayNote('');
+  }, []);
+
+  const handleConfirmPayment = async (e) => {
+    if (e) e.preventDefault();
+    if (!paySlipTarget) return;
+    if (!payRef.trim()) {
+      toast.error('Payment reference or transaction ID is required');
+      return;
+    }
+    setPaying(true);
     try {
-      await api.patch(`/payroll/${id}/pay`);
-      toast.success('Payslip marked as paid');
+      await api.patch(`/payroll/${paySlipTarget._id}/pay`, {
+        paymentReference: payRef.trim(),
+        paymentMethod: payMethod,
+        paidAt: paidAtDate ? new Date(paidAtDate).toISOString() : new Date().toISOString(),
+        note: payNote.trim(),
+      });
+      toast.success('Payment recorded and payslip confirmed as paid');
+      setPaySlipTarget(null);
       refetch();
     } catch (err) {
-      toast.error(err.friendlyMessage || 'Action failed');
+      toast.error(err.friendlyMessage || 'Failed to record payment');
+    } finally {
+      setPaying(false);
     }
-  }, [refetch]);
+  };
 
   const handleGenerate = async (e) => {
     e.preventDefault();
@@ -99,7 +130,7 @@ export default function Payroll() {
   // Define Table Columns
   const columns = useMemo(
     () => [
-      {
+      ...(canRun ? [{
         header: 'Employee',
         key: 'employee',
         minWidth: 200,
@@ -110,48 +141,64 @@ export default function Payroll() {
           const sub = [empId, empDept].filter(Boolean).join(' · ');
           return <UserCell name={empName} avatar={p.employee?.avatar} subtitle={sub} />;
         },
-      },
+      }] : []),
       {
         header: 'Pay Period',
         key: 'period',
-        minWidth: 140,
+        minWidth: 130,
         render: (p) => (
           <div className="table-date-badge">
-            <span>{monthName(p.month)} {p.year}</span>
+            <span style={{ whiteSpace: 'nowrap' }}>{monthName(p.month)} {p.year}</span>
           </div>
         ),
       },
       {
         header: 'Basic Salary',
         key: 'basic',
+        minWidth: 110,
         align: 'right',
         className: 'table-cell-num',
-        render: (p) => money(p.basic || p.earnings?.basic),
+        render: (p) => (
+          <span style={{ whiteSpace: 'nowrap' }}>
+            {money(p.basic || p.earnings?.basic)}
+          </span>
+        ),
       },
       {
         header: 'Gross Pay',
         key: 'gross',
+        minWidth: 110,
         align: 'right',
         className: 'table-cell-num font-semi',
-        render: (p) => money(p.grossEarnings ?? p.grossPay ?? (p.basic + (p.hra || 0) + (p.allowances || 0) + (p.bonus || 0))),
+        render: (p) => (
+          <span style={{ whiteSpace: 'nowrap' }}>
+            {money(p.grossEarnings ?? p.grossPay ?? (p.basic + (p.hra || 0) + (p.allowances || 0) + (p.bonus || 0)))}
+          </span>
+        ),
       },
       {
         header: 'Deductions',
         key: 'deductions',
+        minWidth: 115,
         align: 'right',
         className: 'table-cell-num',
         render: (p) => {
           const ded = p.totalDeductions ?? ((p.pf || 0) + (p.professionalTax || 0) + (p.tax || 0) + (p.lopDeduction || 0) + (p.otherDeductions || 0));
-          return <span style={{ color: 'var(--red-text)' }}>− {money(ded)}</span>;
+          return (
+            <span style={{ color: ded > 0 ? 'var(--red-text)' : 'var(--text-3)', whiteSpace: 'nowrap' }}>
+              {ded > 0 ? `− ${money(ded)}` : money(0)}
+            </span>
+          );
         },
       },
       {
         header: 'Net Payable',
         key: 'netPay',
+        minWidth: 120,
         align: 'right',
         className: 'table-cell-num font-bold',
         render: (p) => (
-          <span style={{ color: 'var(--green-text)', fontSize: 13.5 }}>
+          <span style={{ color: 'var(--green-text)', fontSize: 13.5, whiteSpace: 'nowrap' }}>
             {money(p.netPay)}
           </span>
         ),
@@ -159,13 +206,27 @@ export default function Payroll() {
       {
         header: 'Status',
         key: 'status',
-        width: 110,
-        render: (p) => <Badge status={p.status}>{p.status}</Badge>,
+        minWidth: 120,
+        render: (p) => (
+          <div>
+            <Badge status={p.status}>{p.status}</Badge>
+            {p.status === 'paid' && p.paymentReference && (
+              <div
+                className="font-mono text-3 mt-0.5"
+                style={{ fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 120 }}
+                title={`Ref: ${p.paymentReference} (${p.paymentMethod || 'bank_transfer'})`}
+              >
+                {p.paymentReference}
+              </div>
+            )}
+          </div>
+        ),
       },
       {
         header: 'Actions',
         key: 'actions',
-        width: 140,
+        width: 165,
+        minWidth: 165,
         align: 'right',
         render: (p) => (
           <div className="table-actions-group">
@@ -182,8 +243,8 @@ export default function Payroll() {
               <button
                 type="button"
                 className="btn-action-approve"
-                onClick={() => markPaid(p._id)}
-                title="Mark as Paid"
+                onClick={() => openPaymentModal(p)}
+                title="Record Payment & Disburse"
               >
                 <CheckCircle2 size={13} />
                 <span>Pay</span>
@@ -203,13 +264,13 @@ export default function Payroll() {
         ),
       },
     ],
-    [canRun, markPaid]
+    [canRun, openPaymentModal]
   );
 
   return (
     <>
       <PageHeader
-        title="Payroll & Compensation"
+        title={canRun ? 'Payroll & Compensation' : 'My Payslips'}
         subtitle={canRun ? 'Generate monthly payroll batches, calculate statutory deductions, and issue payslips' : 'View and download your monthly salary statements'}
         actions={
           <div className="flex items-center gap-2">
@@ -242,7 +303,7 @@ export default function Payroll() {
               <TrendingDown size={15} style={{ color: 'var(--red)' }} />
             </div>
             <div className="metric-value font-mono" style={{ color: 'var(--red-text)' }}>
-              {money(Math.max(0, totals.gross - totals.net))}
+              {money(totals.deductions ?? Math.max(0, totals.gross - totals.net))}
             </div>
             <div className="metric-meta">PF, taxes &amp; penalties</div>
           </div>
@@ -261,7 +322,7 @@ export default function Payroll() {
           <div className="metric-card">
             <div className="metric-header">
               <span className="font-semi">Total Payslips</span>
-              <Wallet size={15} />
+              <Calculator size={15} style={{ color: 'var(--purple-text, #8b5cf6)' }} />
             </div>
             <div className="metric-value font-mono">{totalSlips}</div>
             <div className="metric-meta">Generated statements</div>
@@ -270,35 +331,23 @@ export default function Payroll() {
       )}
 
       {/* Enhanced Filter Bar */}
-      <div className="filter-bar-enterprise">
-        <div className="filter-row-top">
-          <Segment
-            value={status}
-            onChange={(v) => {
-              setStatus(v);
-              setPage(1);
-            }}
-            options={[
-              { value: '', label: 'All Statements' },
-              { value: 'draft', label: 'Draft' },
-              { value: 'processed', label: 'Processed' },
-              { value: 'paid', label: 'Paid' },
-            ]}
-          />
-
-          {hasActiveFilters && (
-            <button
-              className="btn btn-ghost btn-sm text-xs text-3"
-              onClick={resetFilters}
-              type="button"
-            >
-              <RotateCcw size={13} />
-              Reset Filters
-            </button>
-          )}
-        </div>
-
+      <div className="filter-bar-enterprise filter-bar-compact">
         <div className="filter-row-controls">
+          <div className="filter-select" style={{ minWidth: 160 }}>
+            <Select
+              value={status}
+              onChange={(e) => {
+                setStatus(e.target.value);
+                setPage(1);
+              }}
+            >
+              <option value="">All Statements</option>
+              <option value="draft">Draft</option>
+              <option value="processed">Processed</option>
+              <option value="paid">Paid</option>
+            </Select>
+          </div>
+
           <div className="filter-select" style={{ minWidth: 160 }}>
             <Select
               value={month}
@@ -332,6 +381,17 @@ export default function Payroll() {
               ))}
             </Select>
           </div>
+
+          {hasActiveFilters && (
+            <button
+              className="btn btn-ghost btn-sm text-xs text-3"
+              onClick={resetFilters}
+              type="button"
+            >
+              <RotateCcw size={13} />
+              Reset Filters
+            </button>
+          )}
         </div>
       </div>
 
@@ -466,6 +526,21 @@ export default function Payroll() {
                 <div><strong>Department:</strong> {viewSlip.employee?.department?.name || 'General'}</div>
                 <div className="text-xs text-3 mt-1"><strong>Bank A/C:</strong> {viewSlip.employee?.bank?.accountNumber || '—'}</div>
                 <div className="text-xs text-3 mt-1"><strong>Payment Date:</strong> {viewSlip.paidAt ? fmtDate(viewSlip.paidAt) : 'Pending'}</div>
+                {viewSlip.status === 'paid' && viewSlip.paymentReference && (
+                  <div className="text-xs text-3 mt-1 font-mono">
+                    <strong>Ref/UTR:</strong> {viewSlip.paymentReference} ({viewSlip.paymentMethod || 'bank_transfer'})
+                  </div>
+                )}
+                {viewSlip.status === 'paid' && viewSlip.paidBy && (
+                  <div className="text-xs text-3 mt-1">
+                    <strong>Disbursed By:</strong> {viewSlip.paidBy?.name || viewSlip.paidBy?.email || 'Admin'}
+                  </div>
+                )}
+                {viewSlip.note && (
+                  <div className="text-xs text-3 mt-1">
+                    <strong>Notes:</strong> {viewSlip.note}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -577,6 +652,104 @@ export default function Payroll() {
               </div>
             </div>
           </div>
+        </Modal>
+      )}
+
+      {/* Record Payment Modal */}
+      {paySlipTarget && (
+        <Modal
+          open={Boolean(paySlipTarget)}
+          onClose={() => !paying && setPaySlipTarget(null)}
+          title="Record Salary Payment"
+          subtitle={`Disbursement for ${fullName(paySlipTarget.employee)} (${monthName(paySlipTarget.month)} ${paySlipTarget.year})`}
+          size="md"
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setPaySlipTarget(null)} disabled={paying}>
+                Cancel
+              </Button>
+              <Button icon={CheckCircle2} onClick={handleConfirmPayment} loading={paying}>
+                Confirm &amp; Record Payment
+              </Button>
+            </>
+          }
+        >
+          <form onSubmit={handleConfirmPayment}>
+            {/* Net Amount Banner */}
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '12px 16px',
+                borderRadius: 'var(--radius-sm)',
+                backgroundColor: 'rgba(16, 185, 129, 0.08)',
+                border: '1px solid rgba(16, 185, 129, 0.25)',
+                marginBottom: 16,
+              }}
+            >
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--green-text)' }}>Net Payable Amount</div>
+                <div className="text-xs text-3">
+                  Bank: {paySlipTarget.employee?.bank?.bankName || 'Direct Transfer'} (A/C: {paySlipTarget.employee?.bank?.accountNumber || '—'})
+                </div>
+              </div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--green-text)', fontFamily: 'var(--font-mono)' }}>
+                {money(paySlipTarget.netPay)}
+              </div>
+            </div>
+
+            <div className="form-grid-2">
+              <Field label="Payment Method" required>
+                <Select value={payMethod} onChange={(e) => setPayMethod(e.target.value)}>
+                  <option value="bank_transfer">Direct Bank Transfer / NEFT / RTGS</option>
+                  <option value="upi">UPI / Instant Corporate Transfer</option>
+                  <option value="cheque">Company Cheque</option>
+                  <option value="cash">Cash Disbursement</option>
+                </Select>
+              </Field>
+
+              <Field label="Payment Date" required>
+                <Input
+                  type="date"
+                  value={paidAtDate}
+                  onChange={(e) => setPaidAtDate(e.target.value)}
+                  max={new Date().toISOString().split('T')[0]}
+                  required
+                />
+              </Field>
+            </div>
+
+            <Field label="Payment Reference / Transaction ID / UTR" required hint="e.g. Bank UTR number, UPI transaction ID, or Cheque serial">
+              <div style={{ display: 'flex', gap: 8 }}>
+                <Input
+                  value={payRef}
+                  onChange={(e) => setPayRef(e.target.value)}
+                  placeholder="e.g. UTR8473920194 or CHQ-004928"
+                  required
+                  style={{ fontFamily: 'var(--font-mono)' }}
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setPayRef(`PAY-${Date.now().toString(36).toUpperCase()}`)}
+                  title="Generate system reference"
+                  style={{ whiteSpace: 'nowrap' }}
+                >
+                  Auto-Gen
+                </Button>
+              </div>
+            </Field>
+
+            <Field label="Remarks / Disbursement Notes" className="mt-3">
+              <Input
+                value={payNote}
+                onChange={(e) => setPayNote(e.target.value)}
+                placeholder="Optional payment notes or accounting reference"
+              />
+            </Field>
+          </form>
         </Modal>
       )}
 

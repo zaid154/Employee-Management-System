@@ -29,15 +29,30 @@ const MONTH_NAMES = [
   'July', 'August', 'September', 'October', 'November', 'December'
 ];
 
+/**
+ * Normalizes any holiday date string into a local midnight Date.
+ * Handles both ISO UTC stamps (e.g. "2026-01-25T18:30:00.000Z" which was seeded in IST)
+ * and plain date strings ("YYYY-MM-DD").
+ */
+function parseHolidayDate(d) {
+  if (!d) return new Date();
+  if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
+    const [y, m, day] = d.split('-').map(Number);
+    return new Date(y, m - 1, day);
+  }
+  const dateObj = new Date(d);
+  return dateObj;
+}
+
 function isLongWeekend(dateStr) {
   if (!dateStr) return false;
-  const d = new Date(dateStr);
+  const d = parseHolidayDate(dateStr);
   const day = d.getDay(); // 0 = Sun, 1 = Mon, 5 = Fri, 6 = Sat
   return day === 1 || day === 5;
 }
 
 function getDaysUntil(dateStr) {
-  const target = new Date(dateStr);
+  const target = parseHolidayDate(dateStr);
   target.setHours(0, 0, 0, 0);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -78,15 +93,15 @@ export default function Holidays() {
         }
         return true;
       })
-      .sort((a, b) => new Date(a.date) - new Date(b.date));
+      .sort((a, b) => parseHolidayDate(a.date) - parseHolidayDate(b.date));
   }, [rawItems, categoryFilter, searchQuery]);
 
   const upcomingList = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     return rawItems
-      .filter((h) => new Date(h.date) >= today)
-      .sort((a, b) => new Date(a.date) - new Date(b.date));
+      .filter((h) => parseHolidayDate(h.date) >= today)
+      .sort((a, b) => parseHolidayDate(a.date) - parseHolidayDate(b.date));
   }, [rawItems]);
 
   const nextHoliday = upcomingList[0] || null;
@@ -95,8 +110,9 @@ export default function Holidays() {
     const total = rawItems.length;
     const publicCount = rawItems.filter((h) => h.type === 'public').length;
     const companyCount = rawItems.filter((h) => h.type === 'company').length;
+    const optionalCount = rawItems.filter((h) => h.type === 'optional').length;
     const longWeekends = rawItems.filter((h) => isLongWeekend(h.date)).length;
-    return { total, publicCount, companyCount, longWeekends, upcomingCount: upcomingList.length };
+    return { total, publicCount, companyCount, optionalCount, longWeekends, upcomingCount: upcomingList.length };
   }, [rawItems, upcomingList]);
 
   // Group items by month for grid view
@@ -106,7 +122,7 @@ export default function Holidays() {
       groups[idx] = [];
     });
     items.forEach((h) => {
-      const d = new Date(h.date);
+      const d = parseHolidayDate(h.date);
       const m = d.getMonth();
       if (groups[m]) {
         groups[m].push(h);
@@ -178,7 +194,7 @@ export default function Holidays() {
       key: 'date',
       minWidth: 170,
       render: (h) => {
-        const d = new Date(h.date);
+        const d = parseHolidayDate(h.date);
         const weekday = d.toLocaleDateString('en-US', { weekday: 'short' });
         return (
           <div className="flex items-center gap-2">
@@ -385,7 +401,7 @@ export default function Holidays() {
               </div>
               <div className="text-xs muted">
                 {fmtDate(nextHoliday.date)} (
-                {new Date(nextHoliday.date).toLocaleDateString('en-US', { weekday: 'long' })})
+                {parseHolidayDate(nextHoliday.date).toLocaleDateString('en-US', { weekday: 'long' })})
                 {nextHoliday.description ? ` · ${nextHoliday.description}` : ''}
               </div>
             </div>
@@ -410,41 +426,39 @@ export default function Holidays() {
         </div>
       )}
 
-      {/* Filter Bar */}
+      {/* Category Tabs & View Switcher */}
       <div className="filter-bar-enterprise">
         <div className="filter-row-top">
           <Segment
             value={categoryFilter}
             onChange={(val) => setCategoryFilter(val)}
             options={[
-              { value: 'all', label: 'All Holidays', count: rawItems.length },
+              { value: 'all', label: 'All Holidays', count: stats.total },
               { value: 'public', label: 'Public / National', count: stats.publicCount },
               { value: 'company', label: 'Company Off', count: stats.companyCount },
-              { value: 'optional', label: 'Restricted / Optional', count: rawItems.filter((h) => h.type === 'optional').length },
+              { value: 'optional', label: 'Restricted / Optional', count: stats.optionalCount },
             ]}
           />
 
-          <div className="flex items-center gap-2">
-            <div className="segment">
-              <button
-                type="button"
-                className={`segment-btn ${viewMode === 'grid' ? 'active' : ''}`}
-                onClick={() => setViewMode('grid')}
-                title="Visual Month Cards Grid"
-              >
-                <LayoutGrid size={14} />
-                <span>Grid</span>
-              </button>
-              <button
-                type="button"
-                className={`segment-btn ${viewMode === 'table' ? 'active' : ''}`}
-                onClick={() => setViewMode('table')}
-                title="Detailed Table View"
-              >
-                <List size={14} />
-                <span>Table</span>
-              </button>
-            </div>
+          <div className="segment" style={{ flexShrink: 0 }}>
+            <button
+              type="button"
+              className={`segment-btn ${viewMode === 'grid' ? 'active' : ''}`}
+              onClick={() => setViewMode('grid')}
+              title="Visual Month Cards Grid"
+            >
+              <LayoutGrid size={14} />
+              <span>Grid</span>
+            </button>
+            <button
+              type="button"
+              className={`segment-btn ${viewMode === 'table' ? 'active' : ''}`}
+              onClick={() => setViewMode('table')}
+              title="Detailed Table View"
+            >
+              <List size={14} />
+              <span>Table</span>
+            </button>
           </div>
         </div>
 
@@ -489,7 +503,7 @@ export default function Holidays() {
       ) : loading ? (
         <div className="holiday-grid">
           {[1, 2, 3, 4, 5, 6].map((k) => (
-            <div key={k} className="holiday-month-card" style={{ height: 160 }}>
+            <div key={k} className="holiday-month-card" style={{ minHeight: 160 }}>
               <div className="holiday-month-header">
                 <div className="skeleton" style={{ width: 80, height: 14 }} />
               </div>
@@ -532,7 +546,7 @@ export default function Holidays() {
 
                 <div className="holiday-list">
                   {monthHolidays.map((h) => {
-                    const d = new Date(h.date);
+                    const d = parseHolidayDate(h.date);
                     const dayNum = d.getDate();
                     const weekday = d.toLocaleDateString('en-US', { weekday: 'short' });
                     const isPassed = d < new Date(now.toDateString());
@@ -545,58 +559,50 @@ export default function Holidays() {
                         className="holiday-item"
                         style={{ opacity: isPassed ? 0.65 : 1 }}
                       >
-                        <div className="flex items-center gap-2" style={{ minWidth: 0, flex: 1 }}>
-                          <div className="holiday-item-date">
-                            <span className="holiday-item-day">{dayNum}</span>
-                            <span className="holiday-item-month">{weekday}</span>
-                          </div>
+                        <div className="holiday-item-date">
+                          <span className="holiday-item-day">{dayNum}</span>
+                          <span className="holiday-item-month">{weekday}</span>
+                        </div>
 
-                          <div style={{ minWidth: 0, flex: 1 }}>
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span
-                                className="font-semi text-xs truncate"
-                                style={{ color: 'var(--text)' }}
-                                title={h.name}
-                              >
-                                {h.name}
+                        <div className="holiday-item-content">
+                          <div
+                            className="holiday-item-title"
+                            title={h.name}
+                          >
+                            {h.name}
+                          </div>
+                          <div className="holiday-item-badges">
+                            <span
+                              className="holiday-cat-pill"
+                              style={{
+                                background: cfg.bg,
+                                color: cfg.text,
+                                border: `1px solid ${cfg.border}`,
+                              }}
+                            >
+                              {cfg.label}
+                            </span>
+                            {longWknd && (
+                              <span className="holiday-weekend-tag">
+                                <CalendarRange size={9} /> 3-Day Wknd
                               </span>
-                            </div>
-                            <div className="flex items-center gap-1 mt-1 flex-wrap">
-                              <span
-                                style={{
-                                  fontSize: 10,
-                                  fontWeight: 600,
-                                  padding: '0px 5px',
-                                  borderRadius: 3,
-                                  background: cfg.bg,
-                                  color: cfg.text,
-                                  border: `1px solid ${cfg.border}`,
-                                }}
-                              >
-                                {h.type}
-                              </span>
-                              {longWknd && (
-                                <span className="holiday-weekend-tag">
-                                  <CalendarRange size={9} /> 3-Day Wknd
-                                </span>
-                              )}
-                            </div>
+                            )}
                           </div>
                         </div>
 
                         {canEdit && (
-                          <div className="flex items-center gap-0.5 ml-2 flex-shrink-0">
+                          <div className="holiday-item-actions">
                             <IconButton
                               icon={Pencil}
                               variant="ghost"
-                              size={12}
+                              size={13}
                               onClick={() => openEdit(h)}
                               title="Edit"
                             />
                             <IconButton
                               icon={Trash2}
                               variant="ghost"
-                              size={12}
+                              size={13}
                               onClick={() => setToDelete(h)}
                               title="Delete"
                               style={{ color: 'var(--red)' }}
@@ -676,7 +682,7 @@ export default function Holidays() {
                 <div className="flex items-center gap-2 text-xs">
                   <CheckCircle2 size={14} style={{ color: 'var(--green-text)' }} />
                   <span>
-                    Falls on <strong>{new Date(form.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</strong>
+                    Falls on <strong>{parseHolidayDate(form.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</strong>
                   </span>
                 </div>
                 {isLongWeekend(form.date) && (

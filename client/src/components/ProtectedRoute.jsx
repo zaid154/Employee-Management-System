@@ -7,7 +7,7 @@ export default function ProtectedRoute({ children, roles }) {
   const { user, loading } = useAuth();
   const location = useLocation();
 
-  if (loading) return <Loader label="Loading your workspace…" />;
+  if (loading) return <Loader fullscreen label="Loading workspace…" />;
   if (!user) return <Navigate to="/login" state={{ from: location }} replace />;
   if (roles && !roles.includes(user.role)) return <Navigate to="/" replace />;
 

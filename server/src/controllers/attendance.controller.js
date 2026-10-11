@@ -3,7 +3,7 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiError } from '../utils/apiError.js';
 import { Attendance } from '../models/Attendance.js';
 import { startOfDay, endOfDay } from '../utils/dates.js';
-import { scopeToEmployees, ownEmployeeId, isPrivileged } from '../utils/access.js';
+import { scopeToEmployees, ownEmployeeId, isPrivileged, teamEmployeeIds } from '../utils/access.js';
 
 const WORK_DAY_HOURS = 9; // scheduled hours; anything less on check-in past 9:30 => late
 
@@ -127,9 +127,14 @@ export const attendanceSummary = asyncHandler(async (req, res) => {
   const employeeId = employee || ownEmployeeId(req.user);
   if (!employeeId) throw ApiError.badRequest('employee is required');
 
-  // Non-privileged users may only summarise themselves.
-  if (!isPrivileged(req.user) && req.user.role !== 'manager' && String(employeeId) !== String(ownEmployeeId(req.user))) {
-    throw ApiError.forbidden();
+  // Scope: Admin/HR may view all. Managers may view team members or themselves. Employees only themselves.
+  if (!isPrivileged(req.user)) {
+    if (req.user.role === 'manager') {
+      const allowed = await teamEmployeeIds(req.user);
+      if (!allowed.includes(String(employeeId))) throw ApiError.forbidden();
+    } else if (String(employeeId) !== String(ownEmployeeId(req.user))) {
+      throw ApiError.forbidden();
+    }
   }
 
   const m = Number(month) || new Date().getMonth() + 1;

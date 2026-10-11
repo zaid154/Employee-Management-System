@@ -32,7 +32,7 @@ export const generatePayroll = asyncHandler(async (req, res) => {
     const breakdown = await computePayslip(emp, { month, year, bonus, tax, otherDeductions });
     const doc = await Payroll.findOneAndUpdate(
       { employee: emp._id, month, year },
-      { $set: { ...breakdown, status: 'processed', generatedBy: req.user._id } },
+      { $set: { ...breakdown, status: 'calculated', generatedBy: req.user._id } },
       { new: true, upsert: true, setDefaultsOnInsert: true }
     );
     results.push(doc);
@@ -48,7 +48,8 @@ export const generatePayroll = asyncHandler(async (req, res) => {
 /** GET /api/payroll — access-scoped payslip list. */
 export const listPayroll = asyncHandler(async (req, res) => {
   const { month, year, status, employee, page = 1, limit = 20 } = req.query;
-  const filter = await scopeToEmployees(req.user);
+  // Admin and HR have company-wide access; Managers and Employees only see their own payslips
+  const filter = isPrivileged(req.user) ? {} : { employee: ownEmployeeId(req.user) };
   if (month) filter.month = Number(month);
   if (year) filter.year = Number(year);
   if (status) filter.status = status;
@@ -64,6 +65,7 @@ export const listPayroll = asyncHandler(async (req, res) => {
         select: 'firstName lastName employeeId avatar designation department',
         populate: { path: 'department', select: 'name code' },
       })
+      .populate('paidBy', 'name email')
       .sort('-year -month')
       .skip((pageNum - 1) * perPage)
       .limit(perPage)
@@ -71,24 +73,23 @@ export const listPayroll = asyncHandler(async (req, res) => {
     Payroll.countDocuments(filter),
     Payroll.aggregate([
       { $match: filter },
-      { $group: { _id: null, net: { $sum: '$netPay' }, gross: { $sum: '$grossEarnings' } } },
+      { $group: { _id: null, net: { $sum: '$netPay' }, gross: { $sum: '$grossEarnings' }, deductions: { $sum: '$totalDeductions' } } },
     ]),
   ]);
 
   res.json({
     success: true,
     data: items,
-    totals: totals[0] || { net: 0, gross: 0 },
+    totals: totals[0] || { net: 0, gross: 0, deductions: 0 },
     pagination: { page: pageNum, limit: perPage, total, pages: Math.ceil(total / perPage) },
   });
 });
 
 /** GET /api/payroll/:id — a single payslip (access-checked). */
 export const getPayslip = asyncHandler(async (req, res) => {
-  const slip = await Payroll.findById(req.params.id).populate(
-    'employee',
-    'firstName lastName employeeId designation department bank salary'
-  );
+  const slip = await Payroll.findById(req.params.id)
+    .populate('employee', 'firstName lastName employeeId designation department bank salary')
+    .populate('paidBy', 'name email');
   if (!slip) throw ApiError.notFound('Payslip not found');
 
   if (!isPrivileged(req.user)) {
@@ -99,7 +100,7 @@ export const getPayslip = asyncHandler(async (req, res) => {
   res.json({ success: true, data: slip });
 });
 
-/** PATCH /api/payroll/:id — adjust a draft/processed slip and recompute totals. */
+/** PATCH /api/payroll/:id — adjust a draft/calculated slip and recompute totals. */
 export const updatePayslip = asyncHandler(async (req, res) => {
   const slip = await Payroll.findById(req.params.id);
   if (!slip) throw ApiError.notFound('Payslip not found');
@@ -121,15 +122,21 @@ export const updatePayslip = asyncHandler(async (req, res) => {
   res.json({ success: true, data: slip });
 });
 
-/** PATCH /api/payroll/:id/pay — mark a payslip as paid. */
+/** PATCH /api/payroll/:id/pay — record verified payment for a payslip. */
 export const markPaid = asyncHandler(async (req, res) => {
-  const slip = await Payroll.findByIdAndUpdate(
-    req.params.id,
-    { $set: { status: 'paid', paidAt: new Date() } },
-    { new: true }
-  );
+  const { paymentReference, paymentMethod = 'bank_transfer', paidAt, note } = req.body;
+  const slip = await Payroll.findById(req.params.id);
   if (!slip) throw ApiError.notFound('Payslip not found');
-  res.json({ success: true, data: slip });
+
+  slip.status = 'paid';
+  slip.paidAt = paidAt ? new Date(paidAt) : new Date();
+  slip.paymentReference = paymentReference || `PAY-${Date.now().toString(36).toUpperCase()}`;
+  slip.paymentMethod = paymentMethod;
+  slip.paidBy = req.user._id;
+  if (note) slip.note = note;
+  await slip.save();
+
+  res.json({ success: true, message: 'Payment recorded and confirmed successfully', data: slip });
 });
 
 /** DELETE /api/payroll/:id — remove a non-paid payslip. */

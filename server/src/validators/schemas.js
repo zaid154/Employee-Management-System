@@ -12,22 +12,79 @@ const isoDate = z.coerce.date();
 
 // ---- Auth ----
 export const loginSchema = z.object({
-  email: z.string().email(),
+  email: z.string().email('Please enter a valid email address'),
   password: z.string().min(1, 'Password is required'),
 });
 
 export const registerSchema = z.object({
-  name: z.string().min(2, 'Name must be at least 2 characters').max(80),
-  email: z.string().email('Please enter a valid work email'),
+  name: z.string().min(2, 'Full name must be at least 2 characters').max(80),
+  email: z.string().email('Please enter a valid corporate work email'),
+  phone: z.string().min(8, 'Please enter a valid mobile number with country code').max(20).optional().default(''),
   password: z.string().min(6, 'Password must be at least 6 characters'),
-  role: z.enum(ROLE_VALUES).optional().default('employee'),
-  designation: z.string().max(80).optional().default('Associate'),
-  departmentName: z.string().max(80).optional().default('General'),
+});
+
+export const verifyEmailSchema = z.object({
+  email: z.string().email('Please enter a valid email address'),
+  code: z.string().min(4, 'Code is too short').max(8, 'Code is too long'),
+});
+
+export const resendVerificationSchema = z.object({
+  email: z.string().email('Please enter a valid email address'),
+});
+
+export const forgotPasswordSchema = z.object({
+  email: z.string().email('Please enter a valid email address'),
+});
+
+export const resetPasswordSchema = z.object({
+  email: z.string().email('Please enter a valid email address'),
+  code: z.string().min(4, 'Code is too short').max(8, 'Code is too long'),
+  newPassword: z.string().min(6, 'New password must be at least 6 characters'),
 });
 
 export const changePasswordSchema = z.object({
   currentPassword: z.string().min(1),
   newPassword: z.string().min(6, 'New password must be at least 6 characters'),
+});
+
+// ---- Onboarding & Approval ----
+export const approveOnboardingSchema = z.object({
+  role: z.enum(ROLE_VALUES).default('employee'),
+  employeeId: z.string().min(1).max(20).optional(),
+  department: objectId,
+  designation: z.string().min(1).max(80),
+  employmentType: z.enum(EMPLOYMENT_TYPES).default('full-time'),
+  dateOfJoining: isoDate.optional(),
+  salary: z.object({
+    basic: z.number().min(0).default(0),
+    hra: z.number().min(0).default(0),
+    allowances: z.number().min(0).default(0),
+    pf: z.number().min(0).default(0),
+    professionalTax: z.number().min(0).default(0),
+  }).partial().optional(),
+  bank: z.object({
+    accountName: z.string().optional().default(''),
+    accountNumber: z.string().optional().default(''),
+    bankName: z.string().optional().default(''),
+    ifsc: z.string().optional().default(''),
+  }).optional(),
+});
+
+export const rejectOnboardingSchema = z.object({
+  reason: z.string().min(2, 'Please provide a rejection reason').max(500),
+});
+
+export const verifyDocumentSchema = z.object({
+  status: z.enum(['verified', 'rejected', 'resubmission_required']),
+  adminRemarks: z.string().max(500).optional().default(''),
+});
+
+export const recordPaymentSchema = z.object({
+  status: z.enum(['paid', 'processing', 'failed']).default('paid'),
+  paymentReference: z.string().min(1, 'Payment reference / transaction ID is required'),
+  paymentMethod: z.string().optional().default('bank_transfer'),
+  paidAt: isoDate.optional(),
+  note: z.string().max(500).optional().default(''),
 });
 
 // ---- Department ----
@@ -134,6 +191,7 @@ export const updatePayrollSchema = z.object({
   otherDeductions: z.number().min(0).optional(),
   note: z.string().max(300).optional(),
 });
+
 
 // ---- Performance ----
 const ratingsSchema = z

@@ -57,6 +57,43 @@ const employeeSchema = new mongoose.Schema(
       ifsc: { type: String, default: '' },
     },
 
+    avatarPublicId: { type: String, default: '' },
+    documents: [
+      {
+        documentType: {
+          type: String,
+          required: true,
+          enum: [
+            'aadhaar',
+            'pan',
+            'passport',
+            'voter_id',
+            'driving_license',
+            'education_certificate',
+            'experience_letter',
+            'resume',
+            'bank_proof',
+            'other',
+          ],
+        },
+        title: { type: String, default: '' },
+        fileName: { type: String, default: '' },
+        fileUrl: { type: String, default: '' },
+        filePublicId: { type: String, default: '' },
+        fileSize: { type: Number, default: 0 },
+        mimeType: { type: String, default: '' },
+        status: {
+          type: String,
+          enum: ['not_uploaded', 'pending', 'verified', 'rejected', 'resubmission_required'],
+          default: 'pending',
+        },
+        adminRemarks: { type: String, default: '' },
+        verifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+        verifiedAt: { type: Date, default: null },
+        uploadedAt: { type: Date, default: Date.now },
+      },
+    ],
+
     // Back-reference to the login account (if the employee can sign in).
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   },

@@ -9,7 +9,7 @@ import {
 } from '../controllers/payroll.controller.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
-import { generatePayrollSchema, updatePayrollSchema } from '../validators/schemas.js';
+import { generatePayrollSchema, updatePayrollSchema, recordPaymentSchema } from '../validators/schemas.js';
 import { ROLES } from '../utils/constants.js';
 
 const router = Router();
@@ -21,7 +21,7 @@ router.get('/', listPayroll);
 router.get('/:id', getPayslip);
 router.post('/generate', hrOnly, validate(generatePayrollSchema), generatePayroll);
 router.patch('/:id', hrOnly, validate(updatePayrollSchema), updatePayslip);
-router.patch('/:id/pay', hrOnly, markPaid);
+router.patch('/:id/pay', hrOnly, validate(recordPaymentSchema), markPaid);
 router.delete('/:id', hrOnly, deletePayslip);
 
 export default router;

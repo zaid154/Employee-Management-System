@@ -11,7 +11,7 @@ import { api } from '../lib/api.js';
 import { Card, CardHeader, Loader, Badge, Avatar, EmptyState, Button, Progress } from '../components/ui.jsx';
 import { DonutChart } from '../components/charts.jsx';
 import { money, compactMoney, fmtDay, fmtTime, fullName } from '../lib/format.js';
-import { canManage, CHART_COLORS } from '../lib/constants.js';
+import { canManage, isPrivileged, CHART_COLORS } from '../lib/constants.js';
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -21,7 +21,7 @@ export default function Dashboard() {
   if (!data?.data) return <EmptyState title="No dashboard data" />;
 
   return canManage(user.role) ? (
-    <ManagerDashboard d={data.data} />
+    <ManagerDashboard d={data.data} user={user} />
   ) : (
     <EmployeeDashboard d={data.data} onRefresh={refetch} />
   );
@@ -102,7 +102,7 @@ function DashboardSkeleton() {
   );
 }
 
-function ManagerDashboard({ d }) {
+function ManagerDashboard({ d, user }) {
   const s = d.stats;
   const deptData = d.byDepartment.map((x, i) => ({
     label: x.name || 'Unassigned',
@@ -130,7 +130,7 @@ function ManagerDashboard({ d }) {
       <div className="metric-strip">
         <div className="metric-card">
           <div className="metric-header">
-            <span>Total Employees</span>
+            <span>{isPrivileged(user?.role) ? 'Total Employees' : 'Team Members'}</span>
             <Users size={16} />
           </div>
           <div className="metric-value">{s.totalEmployees}</div>
@@ -157,20 +157,33 @@ function ManagerDashboard({ d }) {
           </div>
           <div className="metric-value">{s.pendingLeaves}</div>
           <div className="metric-meta">
-            <span>Requires HR review</span>
+            <span>{isPrivileged(user?.role) ? 'Requires HR review' : 'Team requests pending'}</span>
           </div>
         </div>
 
-        <div className="metric-card">
-          <div className="metric-header">
-            <span>Monthly Payroll</span>
-            <Wallet size={16} />
+        {isPrivileged(user?.role) ? (
+          <div className="metric-card">
+            <div className="metric-header">
+              <span>Monthly Payroll</span>
+              <Wallet size={16} />
+            </div>
+            <div className="metric-value">{compactMoney(s.monthlyPayroll)}</div>
+            <div className="metric-meta">
+              <span>{s.payslipsThisMonth} payslips this month</span>
+            </div>
           </div>
-          <div className="metric-value">{compactMoney(s.monthlyPayroll)}</div>
-          <div className="metric-meta">
-            <span>{s.payslipsThisMonth} payslips this month</span>
+        ) : (
+          <div className="metric-card">
+            <div className="metric-header">
+              <span>Supervised Units</span>
+              <Building2 size={16} />
+            </div>
+            <div className="metric-value">{s.departments || 1}</div>
+            <div className="metric-meta">
+              <span>Assigned Department</span>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Distribution Charts */}

@@ -14,48 +14,50 @@ export const ROLE_LABELS = {
   employee: 'Employee',
 };
 
-// Structured navigation groups for enterprise sidebar
-export const NAV_SECTIONS = [
+// Navigation items with explicit allowed roles and role-aware labels
+export const NAV_ITEMS = [
+  { to: '/', label: 'Dashboard', icon: 'LayoutDashboard', roles: [ROLES.ADMIN, ROLES.HR, ROLES.MANAGER, ROLES.EMPLOYEE] },
   {
-    title: 'Core',
-    items: [
-      { to: '/', label: 'Dashboard', icon: 'LayoutDashboard', roles: [] },
-    ],
+    to: '/employees',
+    label: (role) => (role === ROLES.ADMIN || role === ROLES.HR ? 'Employees' : role === ROLES.MANAGER ? 'My Team' : 'Directory'),
+    icon: 'Users',
+    roles: [ROLES.ADMIN, ROLES.HR, ROLES.MANAGER, ROLES.EMPLOYEE],
+  },
+  { to: '/departments', label: 'Departments & Roles', icon: 'Building2', roles: [ROLES.ADMIN, ROLES.HR] },
+  {
+    to: '/attendance',
+    label: (role) => (role === ROLES.EMPLOYEE ? 'My Attendance' : role === ROLES.MANAGER ? 'Team Attendance' : 'Attendance'),
+    icon: 'CalendarCheck',
+    roles: [ROLES.ADMIN, ROLES.HR, ROLES.MANAGER, ROLES.EMPLOYEE],
   },
   {
-    title: 'People & Org',
-    items: [
-      { to: '/employees', label: 'Employees', icon: 'Users', roles: [] },
-      { to: '/departments', label: 'Departments & Roles', icon: 'Building2', roles: [ROLES.ADMIN, ROLES.HR, ROLES.MANAGER] },
-    ],
+    to: '/leaves',
+    label: (role) => (role === ROLES.EMPLOYEE ? 'My Leaves' : 'Leave Requests'),
+    icon: 'CalendarDays',
+    roles: [ROLES.ADMIN, ROLES.HR, ROLES.MANAGER, ROLES.EMPLOYEE],
+    badgeKey: 'pendingLeaves',
+  },
+  { to: '/holidays', label: 'Holiday Calendar', icon: 'Calendar', roles: [ROLES.ADMIN, ROLES.HR, ROLES.MANAGER, ROLES.EMPLOYEE] },
+  {
+    to: '/payroll',
+    label: (role) => (role === ROLES.ADMIN || role === ROLES.HR ? 'Payroll & Slips' : 'My Payslips'),
+    icon: 'Wallet',
+    roles: [ROLES.ADMIN, ROLES.HR, ROLES.MANAGER, ROLES.EMPLOYEE],
   },
   {
-    title: 'Time & Leave',
-    items: [
-      { to: '/attendance', label: 'Attendance', icon: 'CalendarCheck', roles: [] },
-      { to: '/leaves', label: 'Leave Requests', icon: 'CalendarDays', roles: [], badgeKey: 'pendingLeaves' },
-      { to: '/holidays', label: 'Holiday Calendar', icon: 'Calendar', roles: [] },
-    ],
+    to: '/performance',
+    label: (role) => (role === ROLES.EMPLOYEE ? 'My Performance' : role === ROLES.MANAGER ? 'Team Appraisals' : 'Performance'),
+    icon: 'TrendingUp',
+    roles: [ROLES.ADMIN, ROLES.HR, ROLES.MANAGER, ROLES.EMPLOYEE],
   },
-  {
-    title: 'Compensation',
-    items: [
-      { to: '/payroll', label: 'Payroll & Slips', icon: 'Wallet', roles: [] },
-      { to: '/performance', label: 'Performance', icon: 'TrendingUp', roles: [] },
-    ],
-  },
-  {
-    title: 'Administration',
-    items: [
-      { to: '/reports', label: 'Reports & Export', icon: 'PieChart', roles: [ROLES.ADMIN, ROLES.HR, ROLES.MANAGER] },
-      { to: '/announcements', label: 'Notice Board', icon: 'Megaphone', roles: [] },
-      { to: '/settings', label: 'System Settings', icon: 'Settings', roles: [ROLES.ADMIN, ROLES.HR] },
-    ],
-  },
+  { to: '/reports', label: 'Reports & Export', icon: 'PieChart', roles: [ROLES.ADMIN, ROLES.HR, ROLES.MANAGER] },
+  { to: '/announcements', label: 'Notice Board', icon: 'Megaphone', roles: [ROLES.ADMIN, ROLES.HR, ROLES.MANAGER, ROLES.EMPLOYEE] },
+  { to: '/settings', label: 'System Settings', icon: 'Settings', roles: [ROLES.ADMIN] },
 ];
 
-// Flat nav items list for route matching & backward compatibility
-export const NAV_ITEMS = NAV_SECTIONS.flatMap((s) => s.items);
+export const NAV_SECTIONS = [
+  { title: 'Navigation', items: NAV_ITEMS },
+];
 
 export const isPrivileged = (role) => role === ROLES.ADMIN || role === ROLES.HR;
 export const canManage = (role) => role === ROLES.ADMIN || role === ROLES.HR || role === ROLES.MANAGER;

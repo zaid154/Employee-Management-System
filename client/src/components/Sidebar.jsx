@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, Users, Building2, CalendarCheck, CalendarDays, Wallet,
-  TrendingUp, PieChart, Megaphone, Calendar, X, Building, Settings
+  TrendingUp, PieChart, Megaphone, Calendar, X, Settings
 } from 'lucide-react';
 import { NAV_ITEMS } from '../lib/constants.js';
 import { useAuth } from '../lib/auth.jsx';
@@ -29,8 +29,19 @@ export default function Sidebar({ open, onClose, badges = {} }) {
       {open && <div className="sidebar-backdrop" onClick={onClose} />}
       <aside className={`sidebar ${open ? 'open' : ''}`}>
         <div className="sidebar-brand">
-          <div className="brand-icon">
-            <Building size={17} />
+          <div className="brand-icon" style={{ overflow: 'hidden', padding: 0, background: 'transparent', border: 'none', boxShadow: 'none' }}>
+            <img
+              src="/logo.png"
+              alt="PeoplePay"
+              style={{
+                width: 44,
+                height: 44,
+                objectFit: 'cover',
+                objectPosition: 'top center',
+                display: 'block',
+                borderRadius: 6,
+              }}
+            />
           </div>
           <div className="brand-info">
             <div className="brand-title">PeoplePay</div>
@@ -50,6 +61,7 @@ export default function Sidebar({ open, onClose, badges = {} }) {
           {visibleItems.map((item) => {
             const Icon = ICONS[item.icon] || LayoutDashboard;
             const badge = item.badgeKey ? badges[item.badgeKey] : 0;
+            const labelText = typeof item.label === 'function' ? item.label(user?.role) : item.label;
             return (
               <NavLink
                 key={item.to}
@@ -59,7 +71,7 @@ export default function Sidebar({ open, onClose, badges = {} }) {
                 onClick={onClose}
               >
                 <Icon size={16} className="nav-icon" />
-                <span>{item.label}</span>
+                <span>{labelText}</span>
                 {badge > 0 && <span className="nav-badge">{badge}</span>}
               </NavLink>
             );

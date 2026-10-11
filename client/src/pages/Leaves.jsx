@@ -193,49 +193,53 @@ export default function Leaves() {
         key: 'actions',
         width: 150,
         align: 'right',
-        render: (l) => (
-          <div className="table-actions-group">
-            {manage && l.status === 'pending' ? (
-              <>
-                <button
-                  type="button"
-                  className="btn-action-approve"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setReview({ leave: l, action: 'approved' });
-                  }}
-                  title="Approve Leave Request"
-                >
-                  <Check size={13} />
-                  <span>Approve</span>
-                </button>
+        render: (l) => {
+          const ownEmpId = user?.employee?._id || user?.employee;
+          const isOwn = ownEmpId && String(l.employee?._id || l.employee) === String(ownEmpId);
+
+          return (
+            <div className="table-actions-group">
+              {manage && !isOwn && l.status === 'pending' ? (
+                <>
+                  <button
+                    type="button"
+                    className="btn-action-approve"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setReview({ leave: l, action: 'approved' });
+                    }}
+                    title="Approve Leave Request"
+                  >
+                    <Check size={13} />
+                    <span>Approve</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-action-reject"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setReview({ leave: l, action: 'rejected' });
+                    }}
+                    title="Reject Leave Request"
+                  >
+                    <X size={13} />
+                    <span>Reject</span>
+                  </button>
+                </>
+              ) : isOwn && l.status === 'pending' ? (
                 <button
                   type="button"
                   className="btn-action-reject"
                   onClick={(e) => {
                     e.stopPropagation();
-                    setReview({ leave: l, action: 'rejected' });
+                    setCancelId(l._id);
                   }}
-                  title="Reject Leave Request"
+                  title="Withdraw Leave Request"
                 >
-                  <X size={13} />
-                  <span>Reject</span>
+                  <Ban size={13} />
+                  <span>Withdraw</span>
                 </button>
-              </>
-            ) : !manage && l.status === 'pending' ? (
-              <button
-                type="button"
-                className="btn-action-reject"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setCancelId(l._id);
-                }}
-                title="Withdraw Leave Request"
-              >
-                <Ban size={13} />
-                <span>Withdraw</span>
-              </button>
-            ) : (
+              ) : (
               <button
                 type="button"
                 className="btn-action-view"
@@ -250,9 +254,10 @@ export default function Leaves() {
               </button>
             )}
           </div>
-        ),
+        );
       },
-    ],
+    },
+  ],
     [manage]
   );
 

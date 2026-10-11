@@ -39,9 +39,35 @@ export function AuthProvider({ children }) {
 
   const register = useCallback(async (formData) => {
     const { data } = await api.post('/auth/register', formData);
-    setToken(data.token);
-    setUser(data.user);
-    return data.user;
+    if (data.token) {
+      setToken(data.token);
+      setUser(data.user);
+    }
+    return data;
+  }, []);
+
+  const verifyEmail = useCallback(async (email, code) => {
+    const { data } = await api.post('/auth/verify-email', { email, code });
+    if (data.token) {
+      setToken(data.token);
+      setUser(data.user);
+    }
+    return data;
+  }, []);
+
+  const resendVerification = useCallback(async (email) => {
+    const { data } = await api.post('/auth/resend-verification', { email });
+    return data;
+  }, []);
+
+  const forgotPassword = useCallback(async (email) => {
+    const { data } = await api.post('/auth/forgot-password', { email });
+    return data;
+  }, []);
+
+  const resetPassword = useCallback(async (email, code, newPassword) => {
+    const { data } = await api.post('/auth/reset-password', { email, code, newPassword });
+    return data;
   }, []);
 
   const logout = useCallback(async () => {
@@ -61,7 +87,21 @@ export function AuthProvider({ children }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, refreshUser, setUser }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        login,
+        register,
+        verifyEmail,
+        resendVerification,
+        forgotPassword,
+        resetPassword,
+        logout,
+        refreshUser,
+        setUser,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

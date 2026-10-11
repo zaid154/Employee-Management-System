@@ -19,8 +19,9 @@ import Profile from './pages/Profile.jsx';
 import Settings from './pages/Settings.jsx';
 import NotFound from './pages/NotFound.jsx';
 
-const mgmt = [ROLES.ADMIN, ROLES.HR, ROLES.MANAGER];
+const adminOnly = [ROLES.ADMIN];
 const adminHr = [ROLES.ADMIN, ROLES.HR];
+const mgmt = [ROLES.ADMIN, ROLES.HR, ROLES.MANAGER];
 
 export default function App() {
   return (
@@ -41,7 +42,7 @@ export default function App() {
         <Route
           path="departments"
           element={
-            <ProtectedRoute roles={mgmt}>
+            <ProtectedRoute roles={adminHr}>
               <Departments />
             </ProtectedRoute>
           }
@@ -64,7 +65,7 @@ export default function App() {
         <Route
           path="settings"
           element={
-            <ProtectedRoute roles={adminHr}>
+            <ProtectedRoute roles={adminOnly}>
               <Settings />
             </ProtectedRoute>
           }

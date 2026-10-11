@@ -19,7 +19,7 @@ export const LEAVE_TYPES = ['casual', 'sick', 'earned', 'unpaid', 'maternity', '
 
 export const LEAVE_STATUS = ['pending', 'approved', 'rejected', 'cancelled'];
 
-export const PAYROLL_STATUS = ['draft', 'processed', 'paid'];
+export const PAYROLL_STATUS = ['draft', 'calculated', 'approved', 'processing', 'paid', 'failed', 'processed'];
 
 export const REVIEW_STATUS = ['draft', 'submitted', 'acknowledged'];
 

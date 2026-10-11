@@ -7,7 +7,7 @@ import { Leave } from '../models/Leave.js';
 import { Payroll } from '../models/Payroll.js';
 import { Holiday } from '../models/Holiday.js';
 import { startOfDay, endOfDay } from '../utils/dates.js';
-import { isPrivileged, ownEmployeeId } from '../utils/access.js';
+import { isPrivileged, ownEmployeeId, teamEmployeeIds } from '../utils/access.js';
 
 /** GET /api/dashboard — role-aware summary widgets. */
 export const dashboard = asyncHandler(async (req, res) => {
@@ -17,6 +17,25 @@ export const dashboard = asyncHandler(async (req, res) => {
   const year = now.getFullYear();
 
   if (isPrivileged(req.user) || req.user.role === 'manager') {
+    const isManager = req.user.role === 'manager';
+    const teamIds = isManager ? await teamEmployeeIds(req.user) : null;
+
+    const baseEmpFilter = isManager
+      ? { _id: { $in: teamIds }, status: { $nin: ['resigned', 'terminated'] } }
+      : { status: { $nin: ['resigned', 'terminated'] } };
+    const activeEmpFilter = isManager
+      ? { _id: { $in: teamIds }, status: 'active' }
+      : { status: 'active' };
+    const pendingLeaveFilter = isManager
+      ? { employee: { $in: teamIds }, status: 'pending' }
+      : { status: 'pending' };
+    const leaveTodayFilter = isManager
+      ? { employee: { $in: teamIds }, date: today, status: 'on-leave' }
+      : { date: today, status: 'on-leave' };
+    const presentTodayFilter = isManager
+      ? { employee: { $in: teamIds }, date: today, status: { $in: ['present', 'late', 'half-day'] } }
+      : { date: today, status: { $in: ['present', 'late', 'half-day'] } };
+
     const [
       totalEmployees,
       activeEmployees,
@@ -30,26 +49,31 @@ export const dashboard = asyncHandler(async (req, res) => {
       recentHires,
       upcomingHolidays,
     ] = await Promise.all([
-      Employee.countDocuments({ status: { $nin: ['resigned', 'terminated'] } }),
-      Employee.countDocuments({ status: 'active' }),
-      Department.countDocuments(),
-      Leave.countDocuments({ status: 'pending' }),
-      Attendance.countDocuments({ date: today, status: 'on-leave' }),
-      Attendance.countDocuments({ date: today, status: { $in: ['present', 'late', 'half-day'] } }),
-      Payroll.aggregate([
-        { $match: { month, year } },
-        { $group: { _id: null, net: { $sum: '$netPay' }, count: { $sum: 1 } } },
-      ]),
+      Employee.countDocuments(baseEmpFilter),
+      Employee.countDocuments(activeEmpFilter),
+      isManager ? 1 : Department.countDocuments(),
+      Leave.countDocuments(pendingLeaveFilter),
+      Attendance.countDocuments(leaveTodayFilter),
+      Attendance.countDocuments(presentTodayFilter),
+      isManager
+        ? []
+        : Payroll.aggregate([
+            { $match: { month, year } },
+            { $group: { _id: null, net: { $sum: '$netPay' }, count: { $sum: 1 } } },
+          ]),
       Employee.aggregate([
-        { $match: { status: { $nin: ['resigned', 'terminated'] } } },
+        { $match: baseEmpFilter },
         { $group: { _id: '$department', count: { $sum: 1 } } },
         { $lookup: { from: 'departments', localField: '_id', foreignField: '_id', as: 'dept' } },
         { $unwind: { path: '$dept', preserveNullAndEmptyArrays: true } },
         { $project: { _id: 0, name: '$dept.name', count: 1 } },
         { $sort: { count: -1 } },
       ]),
-      Employee.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]),
-      Employee.find({ status: { $nin: ['resigned', 'terminated'] } })
+      Employee.aggregate([
+        ...(isManager ? [{ $match: { _id: { $in: teamIds } } }] : []),
+        { $group: { _id: '$status', count: { $sum: 1 } } },
+      ]),
+      Employee.find(baseEmpFilter)
         .sort('-dateOfJoining')
         .limit(5)
         .populate('department', 'name')
@@ -70,8 +94,8 @@ export const dashboard = asyncHandler(async (req, res) => {
           onLeaveToday,
           presentToday,
           attendanceRate: totalEmployees ? Math.round((presentToday / totalEmployees) * 100) : 0,
-          monthlyPayroll: payrollAgg[0]?.net || 0,
-          payslipsThisMonth: payrollAgg[0]?.count || 0,
+          monthlyPayroll: isManager ? 0 : (payrollAgg[0]?.net || 0),
+          payslipsThisMonth: isManager ? 0 : (payrollAgg[0]?.count || 0),
         },
         byDepartment,
         byStatus: byStatus.map((s) => ({ status: s._id, count: s.count })),

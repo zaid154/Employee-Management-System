@@ -9,7 +9,7 @@ import { useFetch } from '../lib/hooks.js';
 import { api } from '../lib/api.js';
 import {
   PageHeader, Card, CardHeader, Button, Badge, DataTable, UserCell, DateBadge,
-  Select, Input, Modal, Field, Segment,
+  Select, Input, Modal, Field,
 } from '../components/ui.jsx';
 import { fmtDate, fmtTime, fullName, fmtDateInput } from '../lib/format.js';
 import { canManage, isPrivileged, ATTENDANCE_STATUSES } from '../lib/constants.js';
@@ -163,7 +163,8 @@ export default function Attendance() {
   const columns = useMemo(() => {
     const cols = [];
 
-    if (privileged) {
+    // Show Employee column for Admin, HR, and Team Managers monitoring multiple staff
+    if (manage) {
       cols.push({
         header: 'Employee',
         key: 'employee',
@@ -342,22 +343,45 @@ export default function Attendance() {
 
       {/* Enhanced Filter Bar */}
       <div className="filter-bar-enterprise">
+        {/* Row 1: Employee Select + Status Segment + Reset Button */}
         <div className="filter-row-top">
-          <Segment
-            value={statusFilter}
-            onChange={(v) => {
-              setStatusFilter(v);
-              setPage(1);
-            }}
-            options={[
-              { value: '', label: 'All Statuses' },
-              { value: 'present', label: 'Present' },
-              { value: 'late', label: 'Late Arrival' },
-              { value: 'half-day', label: 'Half Day' },
-              { value: 'absent', label: 'Absent' },
-              { value: 'on-leave', label: 'On Leave' },
-            ]}
-          />
+          <div className="attendance-filter-left">
+            {privileged && (
+              <div className="attendance-emp-select" style={{ minWidth: 220 }}>
+                <Select
+                  value={empFilter}
+                  onChange={(e) => {
+                    setEmpFilter(e.target.value);
+                    setPage(1);
+                  }}
+                >
+                  <option value="">All Employees</option>
+                  {(options?.data || []).map((m) => (
+                    <option key={m._id} value={m._id}>
+                      {m.firstName} {m.lastName} ({m.employeeId})
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            )}
+
+            <div className="filter-select" style={{ minWidth: 160 }}>
+              <Select
+                value={statusFilter}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value);
+                  setPage(1);
+                }}
+              >
+                <option value="">All Statuses</option>
+                <option value="present">Present</option>
+                <option value="late">Late Arrival</option>
+                <option value="half-day">Half Day</option>
+                <option value="absent">Absent</option>
+                <option value="on-leave">On Leave</option>
+              </Select>
+            </div>
+          </div>
 
           {hasActiveFilters && (
             <button
@@ -371,41 +395,22 @@ export default function Attendance() {
           )}
         </div>
 
-        <div className="filter-row-controls">
-          {privileged && (
-            <div className="filter-select" style={{ minWidth: 220 }}>
-              <Select
-                value={empFilter}
-                onChange={(e) => {
-                  setEmpFilter(e.target.value);
-                  setPage(1);
-                }}
-              >
-                <option value="">All Employees</option>
-                {(options?.data || []).map((m) => (
-                  <option key={m._id} value={m._id}>
-                    {m.firstName} {m.lastName} ({m.employeeId})
-                  </option>
-                ))}
-              </Select>
-            </div>
-          )}
-
-          {/* Quick Date Presets */}
+        {/* Row 2: Date & Timeline Controls (Presets on Left, Unified Date Range on Right) */}
+        <div className="attendance-date-toolbar">
           <div className="date-presets-group">
             <button
               type="button"
               className={`date-preset-btn ${activePreset === 'all' ? 'active' : ''}`}
               onClick={() => handlePreset('all')}
             >
-              All Records
+              All Time
             </button>
             <button
               type="button"
               className={`date-preset-btn ${activePreset === 'oct9' ? 'active' : ''}`}
               onClick={() => handlePreset('oct9')}
             >
-              9 Oct (Friday)
+              9 Oct
             </button>
             <button
               type="button"
@@ -430,40 +435,43 @@ export default function Attendance() {
             </button>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-3 font-medium">From:</span>
-            <Input
-              type="date"
-              value={from}
-              max={todayStr}
-              onChange={(e) => {
-                const val = e.target.value;
-                setFrom(val);
-                if (val && (!to || to < val)) {
-                  setTo(val);
-                }
-                setPage(1);
-              }}
-              style={{ width: 145 }}
-            />
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-3 font-medium">To:</span>
-            <Input
-              type="date"
-              value={to}
-              max={todayStr}
-              onChange={(e) => {
-                const val = e.target.value;
-                setTo(val);
-                if (val && from && val < from) {
+          {/* Unified Date Range Capsule (Always glued together: From [date] → To [date]) */}
+          <div className="date-range-picker-group">
+            <div className="date-input-wrapper">
+              <span className="date-input-label">From:</span>
+              <Input
+                type="date"
+                value={from}
+                max={todayStr}
+                onChange={(e) => {
+                  const val = e.target.value;
                   setFrom(val);
-                }
-                setPage(1);
-              }}
-              style={{ width: 145 }}
-            />
+                  if (val && (!to || to < val)) {
+                    setTo(val);
+                  }
+                  setPage(1);
+                }}
+                className="date-input-field"
+              />
+            </div>
+            <span className="date-range-sep">→</span>
+            <div className="date-input-wrapper">
+              <span className="date-input-label">To:</span>
+              <Input
+                type="date"
+                value={to}
+                max={todayStr}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setTo(val);
+                  if (val && from && val < from) {
+                    setFrom(val);
+                  }
+                  setPage(1);
+                }}
+                className="date-input-field"
+              />
+            </div>
           </div>
         </div>
       </div>

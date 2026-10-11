@@ -29,4 +29,18 @@ export const env = {
     email: process.env.SEED_ADMIN_EMAIL || 'admin@ems.dev',
     password: process.env.SEED_ADMIN_PASSWORD || 'Admin@12345',
   },
+  // Email / SMTP
+  smtp: {
+    server: process.env.SMTP_SERVER || 'smtp.gmail.com',
+    port: Number(process.env.SMTP_PORT || 587),
+    user: process.env.SMTP_USER || '',
+    password: process.env.SMTP_PASSWORD || '',
+  },
+  brevoApiKey: process.env.BREVO_API_KEY || '',
+  // Cloudinary
+  cloudinary: {
+    cloudName: process.env.CLOUDINARY_CLOUD_NAME || '',
+    apiKey: process.env.CLOUDINARY_API_KEY || '',
+    apiSecret: process.env.CLOUDINARY_API_SECRET || '',
+  },
 };

@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { TrendingUp, Plus, Star, Eye, Award, CheckCircle2, Target } from 'lucide-react';
+import { TrendingUp, Plus, Eye, Award, CheckCircle2, Target } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../lib/auth.jsx';
 import { useFetch } from '../lib/hooks.js';
@@ -19,19 +19,94 @@ const COMPETENCIES = [
   { key: 'leadership', label: 'Leadership / Problem Solving' },
 ];
 
-function Stars({ value = 0, size = 14, onChange }) {
+function RatingStars({ value = 0, size = 14, interactive = false, onChange }) {
+  const numericValue = typeof value === 'number' ? value : parseFloat(value) || 0;
+
   return (
-    <span className="flex gap-1" style={{ color: '#d97706' }}>
-      {[1, 2, 3, 4, 5].map((n) => (
-        <Star
-          key={n}
-          size={size}
-          fill={n <= Math.round(value) ? '#d97706' : 'none'}
-          stroke={n <= Math.round(value) ? '#d97706' : 'var(--text-3)'}
-          onClick={onChange ? () => onChange(n) : undefined}
-          style={onChange ? { cursor: 'pointer' } : undefined}
-        />
-      ))}
+    <span
+      className={`rating-stars-track ${interactive ? 'rating-interactive' : ''}`}
+      role="img"
+      aria-label={`${numericValue.toFixed(1)} out of 5 stars`}
+    >
+      {[1, 2, 3, 4, 5].map((starIdx) => {
+        const diff = numericValue - (starIdx - 1);
+        const fillPct = Math.max(0, Math.min(100, Math.round(diff * 100)));
+
+        return (
+          <span
+            key={starIdx}
+            className="rating-star-wrapper"
+            style={{ width: size, height: size, cursor: interactive ? 'pointer' : 'default' }}
+            onClick={interactive && onChange ? () => onChange(starIdx) : undefined}
+            title={interactive ? `Rate ${starIdx} star${starIdx > 1 ? 's' : ''}` : undefined}
+          >
+            {/* Background Empty / Outline Star */}
+            <svg
+              width={size}
+              height={size}
+              viewBox="0 0 24 24"
+              className="rating-star-bg"
+              aria-hidden="true"
+            >
+              <path
+                d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.75"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+
+            {/* Foreground Filled Star (clipped for exact fractional precision) */}
+            {fillPct > 0 && (
+              <span
+                className="rating-star-fill"
+                style={{ width: `${fillPct}%` }}
+                aria-hidden="true"
+              >
+                <svg
+                  width={size}
+                  height={size}
+                  viewBox="0 0 24 24"
+                  className="rating-star-fg"
+                >
+                  <path
+                    d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
+                    fill="currentColor"
+                    stroke="currentColor"
+                    strokeWidth="1.75"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </span>
+            )}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
+function RatingScoreCell({ score }) {
+  const num = typeof score === 'number' ? score : parseFloat(score) || 0;
+  return (
+    <div className="table-rating-cell">
+      <RatingStars value={num} size={14} />
+      <span className="rating-score-pill">
+        <span className="rating-val font-mono">{num.toFixed(1)}</span>
+        <span className="rating-slash">/</span>
+        <span className="rating-base font-mono">5.0</span>
+      </span>
+    </div>
+  );
+}
+
+function PeriodBadge({ period }) {
+  return (
+    <span className="period-badge font-mono font-semi">
+      {period}
     </span>
   );
 }
@@ -101,7 +176,7 @@ export default function Performance() {
     {
       header: 'Employee',
       key: 'employee',
-      minWidth: 210,
+      minWidth: 195,
       render: (r) => (
         <UserCell
           name={fullName(r.employee)}
@@ -113,45 +188,42 @@ export default function Performance() {
     {
       header: 'Period',
       key: 'period',
-      minWidth: 120,
-      render: (r) => <span className="font-mono font-semi text-xs">{r.period}</span>,
+      minWidth: 95,
+      render: (r) => <PeriodBadge period={r.period} />,
     },
     {
       header: 'Rating Score',
       key: 'overallScore',
-      minWidth: 170,
-      render: (r) => (
-        <div className="flex items-center gap-2">
-          <Stars value={r.overallScore} />
-          <span className="font-bold text-sm font-mono" style={{ color: 'var(--text)' }}>
-            {r.overallScore?.toFixed(1)} / 5.0
-          </span>
-        </div>
-      ),
+      minWidth: 165,
+      render: (r) => <RatingScoreCell score={r.overallScore} />,
     },
     {
       header: 'Evaluator',
       key: 'reviewer',
-      minWidth: 150,
-      render: (r) => <span className="text-sm">{r.reviewer?.name || 'Manager'}</span>,
+      minWidth: 135,
+      render: (r) => (
+        <span className="text-sm text-2" style={{ whiteSpace: 'nowrap' }}>
+          {fullName(r.reviewer) || 'HR / Manager'}
+        </span>
+      ),
     },
     {
       header: 'Status',
       key: 'status',
-      minWidth: 120,
+      minWidth: 105,
       render: (r) => <Badge status={r.status}>{r.status}</Badge>,
     },
     {
       header: 'Submitted',
       key: 'createdAt',
-      minWidth: 130,
+      minWidth: 115,
       render: (r) => <DateBadge date={r.createdAt} />,
     },
     {
       header: 'Actions',
       key: 'actions',
       align: 'right',
-      minWidth: 100,
+      minWidth: 85,
       render: (r) => (
         <div className="table-actions-group">
           <button
@@ -214,10 +286,10 @@ export default function Performance() {
             <Award size={15} style={{ color: 'var(--amber-text)' }} />
           </div>
           <div className="metric-value font-mono" style={{ color: 'var(--amber-text)' }}>
-            {stats.avgScore} <span className="text-xs muted font-normal">/ 5.0</span>
+            {stats.avgScore} <span className="text-xs font-normal" style={{ color: 'var(--text-3)' }}>/ 5.0</span>
           </div>
           <div className="metric-meta">
-            <span>Average score across competencies</span>
+            <span>Average across competencies</span>
           </div>
         </div>
 
@@ -239,11 +311,11 @@ export default function Performance() {
             <span>Evaluation Framework</span>
             <Target size={15} style={{ color: 'var(--accent)' }} />
           </div>
-          <div className="metric-value font-mono" style={{ fontSize: 18 }}>
+          <div className="metric-value font-mono" style={{ color: 'var(--text)' }}>
             5 Pillars
           </div>
           <div className="metric-meta">
-            <span>Execution, Quality, Comms & Lead</span>
+            <span>Execution, Quality & Lead</span>
           </div>
         </div>
       </div>
@@ -342,9 +414,10 @@ export default function Performance() {
                   <div key={c.key} className="flex items-center justify-between" style={{ background: 'var(--surface)', padding: '8px 12px', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border)' }}>
                     <span className="font-medium text-sm">{c.label}</span>
                     <div className="flex items-center gap-3">
-                      <Stars
+                      <RatingStars
                         value={form.ratings[c.key]}
                         size={18}
+                        interactive
                         onChange={(val) =>
                           setForm({
                             ...form,
@@ -412,11 +485,15 @@ export default function Performance() {
                 <div className="text-xs muted">{viewing.employee?.designation} · {viewing.employee?.department?.name || 'General'}</div>
               </div>
               <div className="text-right">
-                <div className="flex items-center gap-1.5">
-                  <Stars value={viewing.overallScore} size={16} />
-                  <span className="font-bold text-base font-mono">{viewing.overallScore?.toFixed(1)}</span>
+                <div className="flex items-center justify-end gap-2">
+                  <RatingStars value={viewing.overallScore} size={15} />
+                  <span className="rating-score-pill">
+                    <span className="rating-val font-mono">{viewing.overallScore?.toFixed(1) || '0.0'}</span>
+                    <span className="rating-slash">/</span>
+                    <span className="rating-base font-mono">5.0</span>
+                  </span>
                 </div>
-                <div className="text-xs muted">Evaluated by {viewing.reviewer?.name || 'Manager'}</div>
+                <div className="text-xs muted mt-1">Evaluated by {viewing.reviewer?.name || 'Manager'}</div>
               </div>
             </div>
 
@@ -429,7 +506,7 @@ export default function Performance() {
                     <div key={c.key} className="flex items-center justify-between p-2" style={{ background: 'var(--bg-subtle)', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border)' }}>
                       <span className="text-xs font-medium">{c.label}</span>
                       <div className="flex items-center gap-2">
-                        <Stars value={score} size={13} />
+                        <RatingStars value={score} size={13} />
                         <span className="font-mono font-bold text-xs">{score}/5</span>
                       </div>
                     </div>

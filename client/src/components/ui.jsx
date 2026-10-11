@@ -229,28 +229,30 @@ export function ConfirmDialog({
 
 /* ---------------- Skeletons & Loaders ---------------- */
 export function Spinner({ size = 18, className = '', color = 'currentColor' }) {
+  const s = typeof size === 'number' ? size : 18;
   return (
     <svg
-      className={`enterprise-spinner ${className}`}
-      width={size}
-      height={size}
+      className={`spinner ${className}`}
+      width={s}
+      height={s}
       viewBox="0 0 24 24"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      style={{ display: 'inline-block', flexShrink: 0 }}
+      style={{ display: 'inline-block', verticalAlign: 'middle', flexShrink: 0 }}
+      aria-label="Loading"
     >
       <circle
         cx="12"
         cy="12"
         r="9.5"
         stroke={color}
-        strokeWidth="2.75"
-        strokeOpacity="0.18"
+        strokeWidth="2.5"
+        strokeOpacity="0.2"
       />
       <path
         d="M12 2.5C17.2467 2.5 21.5 6.75329 21.5 12"
         stroke={color}
-        strokeWidth="2.75"
+        strokeWidth="2.5"
         strokeLinecap="round"
       />
     </svg>
@@ -258,22 +260,16 @@ export function Spinner({ size = 18, className = '', color = 'currentColor' }) {
 }
 
 export function Loader({
-  label = 'Loading workspace data…',
-  helper = 'Fetching real-time records from secure cluster',
+  label = 'Loading…',
   fullscreen = false,
-  size = 22,
+  size = 26,
+  className = '',
 }) {
   return (
-    <div className={`loader-container ${fullscreen ? 'loader-fullscreen' : ''}`}>
-      <div className="loader-card">
-        <div className="loader-icon-wrap">
-          <Spinner size={size} color="var(--accent)" />
-        </div>
-        <div className="loader-label">{label}</div>
-        {helper && <div className="loader-helper">{helper}</div>}
-        <div className="loader-track">
-          <div className="loader-bar" />
-        </div>
+    <div className={`loader-container ${fullscreen ? 'loader-fullscreen' : ''} ${className}`}>
+      <div className="loader-inner">
+        <Spinner size={size} color="var(--primary)" />
+        {label && <span className="loader-label">{label}</span>}
       </div>
     </div>
   );
@@ -394,7 +390,11 @@ export function DataTable({
                   {columns.map((col, colIdx) => (
                     <td
                       key={col.key || colIdx}
-                      style={{ textAlign: col.align || 'left' }}
+                      style={{
+                        textAlign: col.align || 'left',
+                        minWidth: col.minWidth,
+                        width: col.width,
+                      }}
                       className={col.className || ''}
                     >
                       {col.render ? col.render(row, rowIdx) : row[col.key]}

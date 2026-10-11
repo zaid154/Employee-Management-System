@@ -193,6 +193,8 @@ async function runSeed() {
     email: env.seedAdmin.email || 'admin@ems.dev',
     password: env.seedAdmin.password || 'Admin@12345',
     role: ROLES.ADMIN,
+    isVerified: true,
+    status: 'ACTIVE',
   });
 
   const accounts = [
@@ -210,6 +212,8 @@ async function runSeed() {
       password: 'Password@123',
       role: acc.role,
       employee: match.emp._id,
+      isVerified: true,
+      status: 'ACTIVE',
     });
     match.emp.user = user._id;
     await match.emp.save();
