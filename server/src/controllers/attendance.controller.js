@@ -90,7 +90,7 @@ export const listAttendance = asyncHandler(async (req, res) => {
         select: 'firstName lastName employeeId avatar designation department',
         populate: { path: 'department', select: 'name code' },
       })
-      .sort('-date')
+      .sort({ date: -1, createdAt: -1 })
       .skip((pageNum - 1) * perPage)
       .limit(perPage)
       .lean(),

@@ -23,8 +23,46 @@ export default function Attendance() {
   const [page, setPage] = useState(1);
   const [empFilter, setEmpFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const todayStr = useMemo(() => fmtDateInput(new Date()), []);
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
+
+  const activePreset = useMemo(() => {
+    if (!from && !to) return 'all';
+    if (from === todayStr && to === todayStr) return 'today';
+    const now = new Date();
+    const day = now.getDay();
+    const diffToMon = now.getDate() - day + (day === 0 ? -6 : 1);
+    const mon = new Date(new Date().setDate(diffToMon));
+    const monStr = fmtDateInput(mon);
+    if (from === monStr && to === todayStr) return 'week';
+    const first = new Date(now.getFullYear(), now.getMonth(), 1);
+    const firstStr = fmtDateInput(first);
+    if (from === firstStr && to === todayStr) return 'month';
+    return 'custom';
+  }, [from, to, todayStr]);
+
+  const handlePreset = (type) => {
+    const now = new Date();
+    if (type === 'today') {
+      setFrom(todayStr);
+      setTo(todayStr);
+    } else if (type === 'week') {
+      const day = now.getDay();
+      const diffToMon = now.getDate() - day + (day === 0 ? -6 : 1);
+      const mon = new Date(new Date().setDate(diffToMon));
+      setFrom(fmtDateInput(mon));
+      setTo(todayStr);
+    } else if (type === 'month') {
+      const first = new Date(now.getFullYear(), now.getMonth(), 1);
+      setFrom(fmtDateInput(first));
+      setTo(todayStr);
+    } else if (type === 'all') {
+      setFrom('');
+      setTo('');
+    }
+    setPage(1);
+  };
 
   const query = new URLSearchParams({
     page,
@@ -67,9 +105,31 @@ export default function Attendance() {
 
   const handleManualSubmit = async (e) => {
     e.preventDefault();
+    if (!manualForm.employeeId) {
+      toast.error('Please select an employee');
+      return;
+    }
+    if (manualForm.date > todayStr) {
+      toast.error('Attendance date cannot be in the future');
+      return;
+    }
     setBusy(true);
     try {
-      await api.post('/attendance/manual', manualForm);
+      let checkIn = null;
+      let checkOut = null;
+      if (manualForm.checkInTime) {
+        checkIn = new Date(`${manualForm.date}T${manualForm.checkInTime}:00`);
+      }
+      if (manualForm.checkOutTime) {
+        checkOut = new Date(`${manualForm.date}T${manualForm.checkOutTime}:00`);
+      }
+      await api.post('/attendance/mark', {
+        employee: manualForm.employeeId,
+        date: manualForm.date,
+        status: manualForm.status,
+        checkIn: checkIn ? checkIn.toISOString() : null,
+        checkOut: checkOut ? checkOut.toISOString() : null,
+      });
       toast.success('Attendance record logged successfully');
       setMarkOpen(false);
       refetch();
@@ -327,13 +387,52 @@ export default function Attendance() {
             </div>
           )}
 
+          {/* Quick Date Presets */}
+          <div className="date-presets-group">
+            <button
+              type="button"
+              className={`date-preset-btn ${activePreset === 'all' ? 'active' : ''}`}
+              onClick={() => handlePreset('all')}
+            >
+              All Time
+            </button>
+            <button
+              type="button"
+              className={`date-preset-btn ${activePreset === 'today' ? 'active' : ''}`}
+              onClick={() => handlePreset('today')}
+            >
+              Today
+            </button>
+            <button
+              type="button"
+              className={`date-preset-btn ${activePreset === 'week' ? 'active' : ''}`}
+              onClick={() => handlePreset('week')}
+            >
+              This Week
+            </button>
+            <button
+              type="button"
+              className={`date-preset-btn ${activePreset === 'month' ? 'active' : ''}`}
+              onClick={() => handlePreset('month')}
+            >
+              This Month
+            </button>
+          </div>
+
           <div className="flex items-center gap-2">
             <span className="text-xs text-3 font-medium">From:</span>
             <Input
               type="date"
               value={from}
+              max={to || todayStr}
               onChange={(e) => {
-                setFrom(e.target.value);
+                const val = e.target.value;
+                if (val && val > todayStr) {
+                  toast.error('Attendance dates cannot be in the future');
+                  setFrom(todayStr);
+                } else {
+                  setFrom(val);
+                }
                 setPage(1);
               }}
               style={{ width: 145 }}
@@ -345,14 +444,49 @@ export default function Attendance() {
             <Input
               type="date"
               value={to}
+              min={from || undefined}
+              max={todayStr}
               onChange={(e) => {
-                setTo(e.target.value);
+                const val = e.target.value;
+                if (val && val > todayStr) {
+                  toast.error('Attendance dates cannot be in the future');
+                  setTo(todayStr);
+                } else if (from && val < from) {
+                  toast.error('"To" date cannot be before "From" date');
+                  setTo(from);
+                } else {
+                  setTo(val);
+                }
                 setPage(1);
               }}
               style={{ width: 145 }}
             />
           </div>
         </div>
+      </div>
+
+      {/* Informative Results Summary Banner */}
+      <div className="attendance-filter-summary">
+        <div>
+          Showing <strong>{totalRecords}</strong> attendance {totalRecords === 1 ? 'record' : 'records'}
+          {from || to ? (
+            <span>
+              {' '}· Date Filter: <strong>{from ? fmtDate(from) : 'Beginning'}</strong> to <strong>{to ? fmtDate(to) : 'Today'}</strong>
+            </span>
+          ) : (
+            <span> · All dates (sorted newest first)</span>
+          )}
+          {statusFilter && <span> · Status: <span className="capitalize font-semibold">{statusFilter}</span></span>}
+        </div>
+        {hasActiveFilters && (
+          <button
+            type="button"
+            className="attendance-clear-btn"
+            onClick={resetFilters}
+          >
+            Clear all filters
+          </button>
+        )}
       </div>
 
       {/* Unified Enterprise DataTable */}
@@ -422,6 +556,7 @@ export default function Attendance() {
                 <Input
                   type="date"
                   value={manualForm.date}
+                  max={todayStr}
                   onChange={(e) => setManualForm({ ...manualForm, date: e.target.value })}
                   required
                 />

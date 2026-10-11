@@ -21,5 +21,6 @@ router.get('/today', myToday);
 router.get('/summary', attendanceSummary);
 router.get('/', listAttendance);
 router.post('/mark', requireRole(ROLES.ADMIN, ROLES.HR, ROLES.MANAGER), validate(markAttendanceSchema), markAttendance);
+router.post('/manual', requireRole(ROLES.ADMIN, ROLES.HR, ROLES.MANAGER), validate(markAttendanceSchema), markAttendance);
 
 export default router;

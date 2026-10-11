@@ -84,10 +84,13 @@ export const createEmployeeSchema = z.object({
 
 export const updateEmployeeSchema = createEmployeeSchema.partial();
 
-// ---- Attendance ----
 export const markAttendanceSchema = z.object({
   employee: objectId,
-  date: isoDate,
+  date: isoDate.refine((d) => {
+    const endOfToday = new Date();
+    endOfToday.setHours(23, 59, 59, 999);
+    return d <= endOfToday;
+  }, { message: 'Attendance date cannot be in the future' }),
   status: z.enum(ATTENDANCE_STATUS).default('present'),
   checkIn: isoDate.nullish(),
   checkOut: isoDate.nullish(),

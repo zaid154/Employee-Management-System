@@ -28,6 +28,12 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (res) => res,
   (error) => {
+    if (error.response?.status === 401) {
+      setToken(null);
+      if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+        window.location.href = '/login';
+      }
+    }
     const message =
       error.response?.data?.message || error.message || 'Something went wrong. Please try again.';
     error.friendlyMessage = message;
