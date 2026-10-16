@@ -151,3 +151,40 @@ export async function sendPasswordResetEmail(to, otp, name = 'User') {
   `);
   return sendEmail({ to, subject: `Your PeoplePay Password Reset Code: ${otp}`, html, text: `Your PeoplePay password reset code is: ${otp}. Valid for 1 hour.` });
 }
+
+export async function sendSalaryDisbursedEmail(to, name, { month, year, netPay, paymentReference, paymentMethod }) {
+  const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const monthName = MONTHS[month - 1] || `Month ${month}`;
+  const amountStr = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(netPay || 0);
+  const methodMap = {
+    bank_transfer: 'Bank Transfer (NEFT/IMPS)',
+    upi: 'UPI Transfer',
+    cheque: 'Company Cheque',
+    cash: 'Cash Payment',
+  };
+  const modeText = methodMap[paymentMethod] || 'Bank Transfer';
+
+  const html = emailLayout(`Salary Credit &bull; ${monthName} ${year}`, `
+    <div style="text-align:center">
+      <div style="display:inline-block;padding:4px 12px;border-radius:20px;background:#dcfce7;color:#15803d;font-size:12px;font-weight:600;margin-bottom:14px">&#10003; Payment Confirmed</div>
+      <h3 style="margin:0 0 8px;color:#0f172a">Hello ${name},</h3>
+      <p style="font-size:14px;line-height:1.5;color:#475569;margin-bottom:16px">
+        Your salary for <strong>${monthName} ${year}</strong> has been disbursed.
+      </p>
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px;text-align:left;margin-bottom:20px;font-size:13px">
+        <div style="margin-bottom:8px"><strong>Net Disbursed:</strong> <span style="font-size:15px;color:#15803d;font-family:monospace">${amountStr}</span></div>
+        <div style="margin-bottom:8px"><strong>Payment Mode:</strong> ${modeText}</div>
+        <div style="margin-bottom:8px"><strong>Ref / UTR:</strong> <span style="font-family:monospace">${paymentReference || 'N/A'}</span></div>
+        <div><strong>Pay Period:</strong> ${monthName} ${year}</div>
+      </div>
+      <a href="${env.clientUrl}/payroll" class="btn">View / Print Payslip</a>
+    </div>
+  `);
+
+  return sendEmail({
+    to,
+    subject: `Salary Disbursed: ${monthName} ${year} (${amountStr})`,
+    html,
+    text: `Hello ${name}, your salary for ${monthName} ${year} (${amountStr}) has been disbursed. UTR: ${paymentReference || 'N/A'}. Log in at ${env.clientUrl}/payroll to view your statement.`,
+  });
+}

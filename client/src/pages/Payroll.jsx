@@ -1,8 +1,9 @@
 import { useState, useMemo, useCallback } from 'react';
 import {
-  Wallet, Calculator, Eye, CheckCircle2, Trash2, Printer, TrendingUp, TrendingDown,
+  Wallet, Calculator, Eye, CheckCircle2, Trash2, Printer, Download, TrendingUp, TrendingDown,
   Building, RefreshCw, RotateCcw,
 } from 'lucide-react';
+import html2pdf from 'html2pdf.js';
 import toast from 'react-hot-toast';
 import { useAuth } from '../lib/auth.jsx';
 import { useFetch } from '../lib/hooks.js';
@@ -42,6 +43,7 @@ export default function Payroll() {
   const [viewSlip, setViewSlip] = useState(null);
   const [toDelete, setToDelete] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   // Payment Recording Modal
   const [paySlipTarget, setPaySlipTarget] = useState(null);
@@ -110,6 +112,30 @@ export default function Payroll() {
       setBusy(false);
     }
   };
+
+  const handleDownloadPdf = useCallback(() => {
+    const el = document.getElementById('payslip-print-content');
+    if (!el || !viewSlip) return;
+    setDownloadingPdf(true);
+    const empName = fullName(viewSlip.employee)?.replace(/[^a-zA-Z0-9]/g, '_') || 'Employee';
+    const opt = {
+      margin: [8, 8, 8, 8],
+      filename: `Payslip_${empName}_${monthName(viewSlip.month)}_${viewSlip.year}.pdf`,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true, logging: false },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+    };
+    html2pdf().set(opt).from(el).save()
+      .then(() => {
+        toast.success('Payslip PDF downloaded successfully');
+        setDownloadingPdf(false);
+      })
+      .catch((err) => {
+        console.error('PDF generation error:', err);
+        toast.error('Could not generate PDF. Please use the Print option.');
+        setDownloadingPdf(false);
+      });
+  }, [viewSlip]);
 
   const slips = data?.data || [];
   const totals = data?.totals || { net: 0, gross: 0 };
@@ -314,11 +340,12 @@ export default function Payroll() {
           footer={
             <>
               <Button variant="secondary" onClick={() => setViewSlip(null)}>Close</Button>
-              <Button icon={Printer} onClick={() => window.print()}>Print Payslip</Button>
+              <Button variant="secondary" icon={Printer} onClick={() => window.print()}>Print</Button>
+              <Button icon={Download} onClick={handleDownloadPdf} loading={downloadingPdf}>Download PDF</Button>
             </>
           }
         >
-          <div className="payslip-sheet printable-area">
+          <div className="payslip-sheet printable-area" id="payslip-print-content">
             <div className="payslip-header">
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>

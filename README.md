@@ -1,283 +1,223 @@
-# 🏢 PeoplePay — Enterprise HRMS, Employee Management & Payroll System (MERN)
+# PeoplePay — Enterprise HRMS & Payroll System
 
-A modern, enterprise-grade **MERN (MongoDB, Express.js, React 18, Node.js)** Human Resource Management & Payroll web application. Engineered with zero-trust account provisioning, email OTP verification, admin employee onboarding, Cloudinary-backed document verification, automated statutory payroll calculation, real transaction disbursement recording, performance evaluations, and role-based access control (RBAC).
-
----
-
-## 🌟 Key Features & Workflows
-
-### 🔐 1. Enterprise Authentication & Security Lifecycle
-- **Zero-Trust Public Registration**: Self-service role selection is completely removed from public signup. Users cannot escalate privileges or provision internal employee IDs.
-- **Minimal, Validated Registration Form**: Full legal name, corporate work email, mobile number with country code, and strong password.
-- **Dual-Provider Email OTP Verification**: Real-time 6-digit OTP delivery powered by **Gmail SMTP (Nodemailer)** with automatic failover to **Brevo API (Sendinblue)**.
-- **Brute-Force & Rate Limiting**: 15-minute OTP expiration, 5-attempt security lock, and a 60-second resend cooldown timer.
-- **Account State Machine**:
-  $$\text{Registered} \xrightarrow{\text{OTP Verified}} \text{PENDING\_ADMIN\_APPROVAL} \xrightarrow{\text{Admin Review}} \text{ACTIVE} \xrightarrow{\text{Full Access}} \text{Authorized}$$
-- **1-Click Quick Demo Personas**: Instant evaluation buttons on the sign-in screen for `Admin`, `HR Manager`, `Team Manager`, and `Employee`.
-- **Responsive Viewport Design**: Optimized for standard $1366 \times 768$ laptop screens and mobile devices without awkward clipping, hidden buttons, or misaligned inputs.
-
-### 👥 2. Admin Employee Onboarding & Review
-- **Pending Onboarding Pipeline**: Dedicated review segment in the employee directory for applicants who have verified their emails.
-- **Review & Onboard Workflow**: Authorized Admins/HR assign corporate attributes:
-  - System role (`employee`, `manager`, `hr`)
-  - Unique Employee ID
-  - Department & Designation
-  - Employment Type (`full-time`, `part-time`, `contract`, `intern`)
-  - Date of Joining
-  - Salary Breakdown (Basic, HRA, Allowances, PF, Professional Tax)
-  - Bank Disbursement Details (Account Number, Bank Name, IFSC code)
-- **Automated Activation Notification**: Activating an applicant triggers an official welcome email containing login confirmation.
-- **Rejection Workflow**: Audit-tracked candidate rejection with custom compliance notes.
-
-### 📄 3. Cloudinary Document Verification & Avatar Upload
-- **Cloudinary CDN Integration**: Secure media hosting for employee profile photos and compliance documents.
-- **Instant Avatar Upload**: One-click photo upload directly from the employee profile avatar overlay.
-- **Statutory Document Storage**: Dedicated "Documents & Verification" tab supporting:
-  - 🆔 **Aadhaar Card**
-  - 💳 **PAN Card**
-  - 🛂 **Passport**
-  - 🎓 **Educational Degree / Certificates**
-  - 📝 **Resume / CV**
-  - 🏦 **Bank Passbook / Cancelled Cheque**
-- **Admin Verification Workflow**: Admins review uploaded documents (PDF, PNG, JPG up to 10MB) and mark them as `verified` or `rejected` with audit remarks.
-
-### 💰 4. Monthly Payroll & Real Transaction Recording
-- **Statutory Salary Calculation**: Automatic computation of Gross Salary, Basic Pay, HRA, Allowances, Provident Fund (PF), Professional Tax, Loss of Pay (LOP) from leave days, and Net Payable salary.
-- **Batch Processing**: Run payroll for all active employees across a pay period in a single click.
-- **Real Transaction Disbursement**: Payslips are never marked paid automatically. Admins disburse salaries via the **Record Payment Modal**:
-  - Payment Method: Direct Bank Transfer / NEFT / RTGS, UPI Corporate Transfer, Company Cheque, Cash.
-  - Transaction Reference / UTR Number tracking with quick **Auto-Gen** helper.
-  - Payment date and audit remarks.
-- **Payslip Statements**: Downloadable and printable payslip statements displaying company tax ID, earnings, deductions, UTR reference, payment method, and disbursing admin name.
-
-### ⏰ 5. Attendance & Time Tracking
-- **One-Click Check-In / Check-Out**: Direct attendance marking for employees with timestamp logging.
-- **Status Classification**: Present, Absent, Half-Day, Late, On-Leave, Holiday, Weekend.
-- **Manager Overrides**: HR/Admin capability to adjust or manually log attendance records.
-- **Date & Employee Filtering**: Instant attendance auditing by date ranges and department.
-
-### 🌴 6. Leave Management & Approval Workflow
-- **Multi-Type Leave Requests**: Sick Leave, Casual Leave, Earned Leave (PTO), Maternity/Paternity Leave, and Unpaid Leave.
-- **Two-Tier Approval Flow**: Managers and HR can review, approve, or reject leave requests with review notes.
-- **Leave Balance Engine**: Real-time tracking of consumed vs. available leave balances per employee.
-
-### 🎯 7. Performance Reviews & KPI Ratings
-- Structured periodic performance evaluations (Quarterly / Annual).
-- 5-Star metric ratings across Productivity, Quality, Communication, Teamwork, and Leadership.
-- Reviewer feedback, self-evaluations, and goal weightage tracking.
-
-### 📢 8. Announcements & Holiday Calendar
-- Company-wide broadcast board for HR notices and policy updates.
-- Centralized holiday calendar with public, optional, and company holiday classifications.
-
-### 🔒 9. Role-Based Access Control (RBAC) & Security
-- **4 Distinct Roles**:
-  - 👑 **Admin**: Complete system control, user approval, department configuration, database management.
-  - 💼 **HR**: Candidate onboarding, document verification, leave approval, payroll generation & disbursement.
-  - 👔 **Manager**: Department attendance, team leave approvals, performance evaluations.
-  - 👤 **Employee**: Personal profile, self-attendance, leave applications, personal payslips & document uploads.
-- **Security Stack**: JWT with HTTP-only cookies / Bearer headers, bcrypt password hashing, Helmet headers, express-rate-limit, Zod request body validation, and CORS protection.
+PeoplePay is a full-stack MERN (MongoDB, Express, React 18, Node.js) Human Resource Management and Payroll application designed for corporate workforce operations. It covers the full employee lifecycle: onboarding, identity verification via OTP, attendance tracking, leave workflows, statutory payroll calculation, salary disbursement with transaction reference tracking, and downloadable PDF payslips.
 
 ---
 
-## 🛠️ Technology Stack
+## Architecture Overview
 
-| Layer | Technologies |
-| :--- | :--- |
-| **Frontend** | React 18, Vite, React Router v6, Framer Motion, Lucide Icons, React Hot Toast, Axios, Vanilla CSS Design System |
-| **Backend** | Node.js, Express.js, Mongoose ODM, JSON Web Token (JWT), Bcrypt.js, Zod, Nodemailer, Cloudinary SDK, Helmet, Morgan, Compression |
-| **Database** | MongoDB / MongoDB Atlas |
-| **Email & Cloud** | Gmail SMTP, Brevo API (Sendinblue), Cloudinary Media Storage |
+```
+                      ┌────────────────────────┐
+                      │   React 18 + Vite SPA  │
+                      │   (Tailored CSS / UX)  │
+                      └───────────┬────────────┘
+                                  │ Axios (/api)
+                                  ▼
+                      ┌────────────────────────┐
+                      │  Express 4 REST API    │
+                      │  JWT + RBAC + Zod      │
+                      └─────┬────────────┬─────┘
+                            │            │
+            ┌───────────────┘            └───────────────┐
+            ▼                                            ▼
+┌────────────────────────┐                  ┌────────────────────────┐
+│   MongoDB / Atlas      │                  │  Third-Party Services  │
+│   (Mongoose Schemas)   │                  │  - Cloudinary (Files)  │
+│   - Employees, Users   │                  │  - Gmail SMTP / Brevo  │
+│   - Payroll, Leaves    │                  └────────────────────────┘
+│   - Attendance Logs    │
+└────────────────────────┘
+```
 
 ---
 
-## 📁 Project Structure
+## Key Modules & Capabilities
 
-```text
-├── .env.example              # Environment configuration template
-├── package.json              # Root orchestration scripts
-├── client/                   # React + Vite Frontend
-│   ├── public/               # Static assets & brand logos
+### 1. Authentication & Role-Based Access (RBAC)
+- **Role Hierarchy**: `admin`, `hr`, `manager`, `employee`.
+- **Public Signup with Admin Approval**: Public accounts verify their work email via a 6-digit OTP and land in a `pending_approval` queue. Privileged roles assign departments, designations, and salary structures before granting access.
+- **Dual Email Transport**: Automated OTP and alert delivery through Gmail SMTP with Brevo API fallback.
+- **Session Security**: Stateless JWT authentication with Bearer tokens, bcrypt salt hashing, and rate-limited endpoints.
+
+### 2. Employee Directory & Document Compliance
+- Complete employee directory with profile cards, designation filters, and full profile editing.
+- **Document Management**: Upload compliance records (Aadhaar, PAN, Passport, Certificates, Resume) stored directly on Cloudinary CDN with Admin verification flags (`verified` / `rejected`).
+- **Profile Avatars**: Instant photo uploads with automatic CDN optimization.
+
+### 3. Payroll Engine & Salary Disbursement
+- **Statutory Calculation**: Automatic computation of Gross Salary, Basic Pay, HRA, Conveyance, PF, Professional Tax, TDS deductions, and Loss of Pay (LOP) derived from attendance records.
+- **Disbursement Tracking**: Mark payroll as paid with real banking metadata:
+  - Payment modes: Bank Transfer (NEFT/IMPS/RTGS), UPI, Cheque, Cash.
+  - Transaction Reference / UTR Number tracking.
+  - Audit metadata recording disbursing admin and timestamp.
+- **Automated Salary Disbursed Email**: Confirmed salary disbursements immediately dispatch a branded email notification to the employee containing pay period details, credited amount, payment method, and UTR reference number.
+- **Direct PDF Payslip Export**: Employees and HR admins can download formatted, high-resolution PDF salary slips directly using the integrated `html2pdf.js` engine or print them via standard print styles.
+
+### 4. Attendance & Time Tracking
+- Single-click Punch In / Punch Out with timestamps.
+- Daily status tracking: Present, Absent, Half-Day, Late, On-Leave.
+- Date range filtering, search, and manager manual override capability.
+
+### 5. Leave Management
+- Applications for Casual, Sick, Earned (PTO), and Unpaid leaves.
+- Two-tier approval system (Manager and HR) with review comments and cancellation safeguards.
+- Real-time leave balance deduction and tracking per leave category.
+
+### 6. Holidays & Announcements
+- Centralized holiday calendar with custom categories (National, Festival, Optional) and long-weekend badge indicators.
+- Broadcast board for company-wide HR notices.
+
+---
+
+## Tech Stack
+
+- **Frontend**: React 18, Vite, React Router v6, Lucide Icons, React Hot Toast, html2pdf.js, Axios, Vanilla CSS design tokens.
+- **Backend**: Node.js, Express 4, Mongoose ODM, JWT, Bcrypt.js, Zod, Nodemailer, Cloudinary SDK, Helmet, Compression.
+- **Database**: MongoDB (Local or MongoDB Atlas).
+- **Email Delivery**: SMTP (Gmail) + Brevo HTTP API.
+
+---
+
+## Project Structure
+
+```
+.
+├── package.json              # Concurrently scripts for dev/build
+├── client/                   # Vite React SPA
 │   ├── src/
-│   │   ├── components/       # Layouts, Topbar, Sidebar, UI components (Modal, Badge, Table)
-│   │   ├── lib/              # Axios instance, Auth context, Formatters, Constants
-│   │   ├── pages/            # Dashboard, Employees, EmployeeDetail, Attendance, Payroll, Leaves, Login, etc.
-│   │   ├── styles.css        # Enterprise design system & responsive rules
-│   │   ├── App.jsx           # Role-based route guard definitions
-│   │   └── main.jsx          # React DOM entry point
-│   ├── index.html            # Vite HTML template
-│   └── vite.config.js        # Vite dev server configuration
-└── server/                   # Express.js REST API
+│   │   ├── components/       # UI library: DataTable, Modal, Badges, Header
+│   │   ├── lib/              # Auth context, Axios API client, Formatters
+│   │   ├── pages/            # Dashboard, Employees, Payroll, Attendance, Leaves, Login, Settings
+│   │   └── styles.css        # Enterprise design system
+│   └── vite.config.js        # Dev proxy (/api -> :5002)
+└── server/                   # Express REST API
     ├── src/
-    │   ├── config/           # Database connection & Environment validation
-    │   ├── controllers/      # Auth, Employee, Payroll, Attendance, Leave, etc.
-    │   ├── middleware/       # JWT auth guard, Role validator, Rate limiting, Zod validator
-    │   ├── models/           # Mongoose schemas (User, Employee, Attendance, Leave, Payroll, etc.)
-    │   ├── routes/           # Express REST API routes
-    │   ├── services/         # Email service (SMTP+Brevo), Cloudinary service, Payroll engine
-    │   ├── utils/            # Access scopes, constants, error classes, async handlers
-    │   ├── validators/       # Zod validation schemas
-    │   ├── app.js            # Express app configuration & middleware
-    │   ├── index.js          # Server bootstrap entry point
-    │   └── seed.js           # Database seeder with complete sample dataset
+    │   ├── config/           # DB & environment variables
+    │   ├── controllers/      # Auth, Employee, Payroll, Attendance, Leave
+    │   ├── middleware/       # Auth guards, RBAC, Zod validation
+    │   ├── models/           # Mongoose schemas (User, Employee, Payroll, etc.)
+    │   ├── routes/           # Express router definitions
+    │   ├── services/         # Email notifications, Cloudinary, Payroll engine
+    │   └── seed.js           # Database seeder with sample dataset
     └── package.json
 ```
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
-### 1. Prerequisites
-- **Node.js**: v18+ (Node 20+ or 24 recommended)
-- **MongoDB**: Local MongoDB instance or free [MongoDB Atlas Cluster](https://www.mongodb.com/atlas)
-- **Email Credentials**: Gmail App Password or Brevo API Key
-- **Cloudinary Account**: Cloud name, API key, and API secret
+### Prerequisites
+- Node.js 18 or higher
+- MongoDB instance (local or MongoDB Atlas cluster)
 
----
-
-### 2. Installation
-
-Clone the repository and install all dependencies:
+### 1. Installation
+Clone the repository and install dependencies across root, server, and client:
 
 ```bash
 git clone https://github.com/zaid154/Employee-Management-System.git
 cd Employee-Management-System
 
-# Install all dependencies (Root, Server, and Client)
 npm run install:all
 ```
 
----
+### 2. Environment Setup
+Configure your environment in a `.env` file at the project root:
 
-### 3. Environment Configuration
-
-Create a `.env` file in the root or `server/` directory:
-
-```env
-# ---- Server Configuration ----
+```ini
+# Server
 PORT=5002
-MONGO_URI=mongodb://127.0.0.1:27017/ems_payroll
-JWT_SECRET=your_super_secret_jwt_key_here
+MONGO_URI=mongodb+srv://<username>:<password>@cluster.mongodb.net/ems_payroll?retryWrites=true&w=majority
+JWT_SECRET=your_jwt_secret_key_here
 JWT_EXPIRES=7d
 CLIENT_URL=http://localhost:5173
 NODE_ENV=development
 
-# ---- Email / SMTP / Brevo Configuration ----
-SMTP_SERVER=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=your_verified_sender_email@gmail.com
-SMTP_PASSWORD=your_gmail_app_password
-BREVO_API_KEY=your_brevo_api_key_for_failover
-
-# ---- Cloudinary Configuration ----
-CLOUDINARY_CLOUD_NAME=your_cloudinary_cloud_name
-CLOUDINARY_API_KEY=your_cloudinary_api_key
-CLOUDINARY_API_SECRET=your_cloudinary_api_secret
-
-# ---- Default Admin (Seed Script) ----
+# First Admin User (used by npm run seed)
 SEED_ADMIN_NAME=HR Admin
 SEED_ADMIN_EMAIL=admin@ems.dev
 SEED_ADMIN_PASSWORD=Admin@12345
+
+# Email Transports (Optional for local dev, console fallback active by default)
+SMTP_SERVER=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your_email@gmail.com
+SMTP_PASSWORD=your_app_password
+BREVO_API_KEY=your_brevo_api_key
+
+# Cloudinary (Optional, for document and photo uploads)
+CLOUDINARY_CLOUD_NAME=your_cloud_name
+CLOUDINARY_API_KEY=your_api_key
+CLOUDINARY_API_SECRET=your_api_secret
+
+# Client
+VITE_API_URL=/api
 ```
 
----
-
-### 4. Database Seeding
-
-Populate the database with sample departments, employees, attendance logs, leave balances, payslips, and demo user accounts:
+### 3. Database Seeding
+To populate initial departments, employees, historical attendance, and demo accounts:
 
 ```bash
 npm run seed
 ```
 
----
-
-### 5. Running the Application
-
-Start both the Backend API and Frontend Client simultaneously:
+### 4. Running the Development Servers
+Start both the Express API and Vite client with a single command:
 
 ```bash
 npm run dev
 ```
 
-- **Frontend Client**: [http://localhost:5173](http://localhost:5173)
-- **Backend API**: [http://localhost:5002/api](http://localhost:5002/api)
-- **Health Check**: [http://localhost:5002/api/health](http://localhost:5002/api/health)
+- **Frontend Client**: `http://localhost:5173`
+- **Backend API**: `http://localhost:5002/api`
+- **API Health Check**: `http://localhost:5002/api/health`
 
 ---
 
-## 🔑 Demo Credentials
+## Seed Accounts
 
-After running `npm run seed`, you can sign in with any of the pre-configured accounts (or use the 1-click Quick Demo Persona buttons on the login screen):
-
-| Role | Email | Password | Access Level |
+| Role | Email | Password | Permissions |
 | :--- | :--- | :--- | :--- |
-| **Admin** | `admin@ems.dev` | `Admin@12345` | Complete system access, employee onboarding, system configuration |
-| **HR Manager** | `priya.nair@ems.dev` | `Password@123` | Employee directory, document verification, payroll runs & disbursement |
-| **Team Manager** | `aarav.sharma@ems.dev` | `Password@123` | Team attendance, team leave reviews, performance ratings |
-| **Employee** | `rohan.mehta@ems.dev` | `Password@123` | Self-service attendance, leave requests, document uploads, personal payslips |
+| **Admin** | `admin@ems.dev` | `Admin@12345` | Complete access, settings, account onboarding |
+| **HR Manager** | `priya.nair@ems.dev` | `Password@123` | Employee onboarding, document verification, payroll runs |
+| **Team Manager** | `aarav.sharma@ems.dev` | `Password@123` | Team attendance, leave approvals, evaluations |
+| **Employee** | `rohan.mehta@ems.dev` | `Password@123` | Personal profile, attendance, leave requests, payslips |
 
 ---
 
-## 📡 Key API Endpoints
+## Primary API Endpoints
 
-### 🔐 Authentication (`/api/auth`)
-- `POST /api/auth/register` — Public registration (Name, Email, Phone, Password)
-- `POST /api/auth/verify-email` — Verify email using 6-digit OTP
-- `POST /api/auth/resend-code` — Resend verification OTP (with cooldown rate limit)
-- `POST /api/auth/login` — Sign in and receive JWT token & user session
-- `GET  /api/auth/me` — Retrieve authenticated user profile
-- `POST /api/auth/logout` — Invalidate user session
-- `POST /api/auth/forgot-password` — Request password reset email
-- `POST /api/auth/reset-password` — Reset password with verification code
-- `GET  /api/auth/pending-registrations` — Fetch applicants awaiting Admin review *(Admin/HR)*
+### Authentication (`/api/auth`)
+- `POST /api/auth/register` — Public registration
+- `POST /api/auth/verify-email` — Submit 6-digit verification OTP
+- `POST /api/auth/login` — Sign in and obtain JWT
+- `GET  /api/auth/me` — Current authenticated session
+- `POST /api/auth/forgot-password` — Password recovery trigger
 
-### 👥 Employees & Onboarding (`/api/employees`)
-- `GET    /api/employees` — List all employees (Search, filter, pagination)
-- `POST   /api/employees` — Directly create employee record *(Admin/HR)*
-- `GET    /api/employees/:id` — Get full employee profile
-- `PUT    /api/employees/:id` — Update employee information *(Admin/HR)*
-- `DELETE /api/employees/:id` — Archive / Terminate employee *(Admin/HR)*
-- `POST   /api/employees/approve-registration/:id` — Onboard and activate candidate account *(Admin/HR)*
-- `POST   /api/employees/reject-registration/:id` — Reject registration with reason *(Admin/HR)*
-- `POST   /api/employees/:id/avatar` — Upload profile photo to Cloudinary
-- `POST   /api/employees/:id/documents` — Upload compliance document to Cloudinary
-- `PATCH  /api/employees/:id/documents/:docId/verify` — Approve or reject document *(Admin/HR)*
-- `DELETE /api/employees/:id/documents/:docId` — Delete uploaded document
+### Employees (`/api/employees`)
+- `GET  /api/employees` — List employees with search, pagination, and department filters
+- `POST /api/employees` — Create an employee record (Admin/HR)
+- `GET  /api/employees/:id` — Full employee profile details
+- `PUT  /api/employees/:id` — Update personal or employment info
+- `POST /api/employees/approve-registration/:id` — Activate applicant and assign role
+- `POST /api/employees/:id/documents` — Upload compliance document
+- `PATCH /api/employees/:id/documents/:docId/verify` — Set document status to verified/rejected
 
-### 💵 Payroll & Compensation (`/api/payroll`)
-- `GET    /api/payroll` — List payslips (Scoped by role, filter by month/year/status)
-- `POST   /api/payroll/generate` — Generate monthly payroll batch *(Admin/HR)*
-- `GET    /api/payroll/:id` — View full payslip breakdown & bank info
-- `PATCH  /api/payroll/:id` — Adjust draft/calculated payslip earnings & deductions *(Admin/HR)*
-- `PATCH  /api/payroll/:id/pay` — Record verified disbursement (UTR/Reference, method, date, notes) *(Admin/HR)*
-- `DELETE /api/payroll/:id` — Delete un-disbursed payslip *(Admin/HR)*
+### Payroll (`/api/payroll`)
+- `GET   /api/payroll` — List payslips (scoped by role, filterable by month/year)
+- `POST  /api/payroll/generate` — Generate monthly payslip batch (Admin/HR)
+- `GET   /api/payroll/:id` — Single payslip statement with breakdown
+- `PATCH /api/payroll/:id/pay` — Confirm payment disbursement with UTR and trigger email alert
+- `DELETE /api/payroll/:id` — Remove un-paid payslip
 
-### ⏱️ Attendance (`/api/attendance`)
-- `GET  /api/attendance` — View attendance logs (Filtered by date, department, employee)
-- `POST /api/attendance/check-in` — Check in current user
-- `POST /api/attendance/check-out` — Check out current user
-- `POST /api/attendance/manual` — Manually record/adjust attendance *(Admin/HR/Manager)*
-
-### 🌴 Leaves (`/api/leaves`)
-- `GET  /api/leaves` — List leave requests (Role-scoped)
-- `POST /api/leaves` — Submit new leave application
-- `PUT  /api/leaves/:id/status` — Approve or Reject leave request *(Admin/HR/Manager)*
+### Attendance & Leaves (`/api/attendance`, `/api/leaves`)
+- `POST /api/attendance/check-in` — Record daily check-in
+- `POST /api/attendance/check-out` — Record daily check-out
+- `GET  /api/leaves` — List leave applications
+- `POST /api/leaves` — Submit time-off request
+- `PATCH /api/leaves/:id/review` — Approve or reject leave request
 
 ---
 
-## 📜 Available NPM Scripts
+## License
 
-| Command | Description |
-| :--- | :--- |
-| `npm run dev` | Runs both backend Express server and Vite frontend concurrently |
-| `npm run dev:server` | Runs backend server with native Node `--watch` reload |
-| `npm run dev:client` | Runs frontend Vite dev server |
-| `npm run seed` | Seeds database with sample HR data and demo accounts |
-| `npm run build` | Builds production-ready frontend bundle (`vite build`) |
-| `npm run install:all` | Installs root, server, and client dependencies |
-
----
-
-## 📄 License
-This project is open-source and available under the [MIT License](LICENSE).
+This project is licensed under the [MIT License](LICENSE).

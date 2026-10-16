@@ -4,6 +4,7 @@ import { Payroll } from '../models/Payroll.js';
 import { Employee } from '../models/Employee.js';
 import { computePayslip } from '../services/payroll.service.js';
 import { scopeToEmployees, ownEmployeeId, isPrivileged } from '../utils/access.js';
+import { sendSalaryDisbursedEmail } from '../services/email.service.js';
 
 /**
  * POST /api/payroll/generate — generate (or regenerate) payslips for a month.
@@ -125,7 +126,7 @@ export const updatePayslip = asyncHandler(async (req, res) => {
 /** PATCH /api/payroll/:id/pay — record verified payment for a payslip. */
 export const markPaid = asyncHandler(async (req, res) => {
   const { paymentReference, paymentMethod = 'bank_transfer', paidAt, note } = req.body;
-  const slip = await Payroll.findById(req.params.id);
+  const slip = await Payroll.findById(req.params.id).populate('employee');
   if (!slip) throw ApiError.notFound('Payslip not found');
 
   slip.status = 'paid';
@@ -135,6 +136,20 @@ export const markPaid = asyncHandler(async (req, res) => {
   slip.paidBy = req.user._id;
   if (note) slip.note = note;
   await slip.save();
+
+  // Notify employee via email asynchronously
+  if (slip.employee?.email) {
+    const empName = `${slip.employee.firstName || ''} ${slip.employee.lastName || ''}`.trim() || 'Team Member';
+    sendSalaryDisbursedEmail(slip.employee.email, empName, {
+      month: slip.month,
+      year: slip.year,
+      netPay: slip.netPay,
+      paymentReference: slip.paymentReference,
+      paymentMethod: slip.paymentMethod,
+    }).catch((err) => {
+      console.warn('[Payroll] Failed to send salary notification email:', err.message);
+    });
+  }
 
   res.json({ success: true, message: 'Payment recorded and confirmed successfully', data: slip });
 });
