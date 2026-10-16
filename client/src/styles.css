@@ -586,81 +586,6 @@ img, svg {
   background: rgba(59, 130, 246, 0.25);
 }
 
-.password-meter-wrap {
-  margin-top: 4px;
-  margin-bottom: 10px;
-}
-
-.password-meter {
-  display: flex;
-  gap: 4px;
-  height: 3px;
-}
-
-.password-meter-segment {
-  flex: 1;
-  height: 100%;
-  border-radius: 2px;
-  background: var(--border);
-  transition: background-color var(--transition-fast);
-}
-
-.password-meter-segment.weak { background: var(--red); }
-.password-meter-segment.fair { background: var(--amber); }
-.password-meter-segment.strong { background: var(--green); }
-
-/* Legacy compatibility classes */
-.auth-wrap {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px 16px;
-  background-color: var(--bg);
-}
-
-.auth-card {
-  width: 100%;
-  max-width: 480px;
-  background-color: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  padding: 32px 28px;
-}
-
-.auth-header {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  margin-bottom: 24px;
-}
-
-.demo-chips {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin-bottom: 20px;
-}
-
-.demo-chip {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  padding: 9px 11px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background-color: var(--bg-subtle);
-  font-size: 11.5px;
-  text-align: left;
-  transition: all var(--transition-fast);
-}
-
-.demo-chip:hover {
-  border-color: var(--border-focus);
-  background-color: var(--surface);
-}
 
 /* ============================================================
    Sidebar (Enterprise Dark Slate)
@@ -1854,35 +1779,6 @@ img, svg {
   width: auto;
 }
 
-/* Date Presets and Table Summary */
-.date-presets-group {
-  display: flex;
-  align-items: center;
-  background: var(--bg-subtle);
-  padding: 2px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  gap: 2px;
-  flex-shrink: 0;
-}
-
-.date-preset-btn {
-  padding: 4px 10px;
-  font-size: 11px;
-  font-weight: 500;
-  border-radius: calc(var(--radius-sm) - 2px);
-  border: none;
-  background: transparent;
-  color: var(--text-2);
-  cursor: pointer;
-  transition: all 0.15s ease;
-  white-space: nowrap;
-}
-
-.date-preset-btn:hover {
-  background: var(--surface);
-  color: var(--text-1);
-}
 
 /* Attendance Filter Bar Refinements */
 .attendance-filter-left {

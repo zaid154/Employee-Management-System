@@ -24,53 +24,38 @@ const TYPE_CONFIG = {
   optional: { label: 'Restricted / Optional', color: 'amber', bg: 'var(--amber-subtle)', border: 'var(--amber-border)', text: 'var(--amber-text)' },
 };
 
-const MONTH_NAMES = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December'
-];
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
-/**
- * Normalizes any holiday date string into a local midnight Date.
- * Handles both ISO UTC stamps (e.g. "2026-01-25T18:30:00.000Z" which was seeded in IST)
- * and plain date strings ("YYYY-MM-DD").
- */
-function parseHolidayDate(d) {
+const parseDate = (d) => {
   if (!d) return new Date();
   if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
     const [y, m, day] = d.split('-').map(Number);
     return new Date(y, m - 1, day);
   }
-  const dateObj = new Date(d);
-  return dateObj;
-}
+  return new Date(d);
+};
 
-function isLongWeekend(dateStr) {
-  if (!dateStr) return false;
-  const d = parseHolidayDate(dateStr);
-  const day = d.getDay(); // 0 = Sun, 1 = Mon, 5 = Fri, 6 = Sat
+const isLongWeekend = (d) => {
+  const day = parseDate(d).getDay();
   return day === 1 || day === 5;
-}
+};
 
-function getDaysUntil(dateStr) {
-  const target = parseHolidayDate(dateStr);
-  target.setHours(0, 0, 0, 0);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const diffTime = target - today;
-  return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-}
+const getDaysUntil = (d) => {
+  const target = parseDate(d).setHours(0, 0, 0, 0);
+  const today = new Date().setHours(0, 0, 0, 0);
+  return Math.ceil((target - today) / 86400000);
+};
 
 export default function Holidays() {
   const { user } = useAuth();
-  const canEdit = isPrivileged(user.role);
+  const canEdit = isPrivileged(user?.role);
 
   const [year, setYear] = useState(currentYear);
-  const [viewMode, setViewMode] = useState('grid'); // 'grid' | 'table'
+  const [viewMode, setViewMode] = useState('grid');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   const { data, loading, refetch } = useFetch(`/holidays?year=${year}`, [year]);
-
   const [modal, setModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({ name: '', date: '', type: 'public', description: '' });
@@ -80,54 +65,38 @@ export default function Holidays() {
 
   const rawItems = useMemo(() => data?.data || [], [data]);
 
-  // Filtered & sorted holidays
   const items = useMemo(() => {
     return rawItems
       .filter((h) => {
         if (categoryFilter !== 'all' && h.type !== categoryFilter) return false;
         if (searchQuery.trim()) {
           const q = searchQuery.toLowerCase();
-          const matchName = h.name?.toLowerCase().includes(q);
-          const matchDesc = h.description?.toLowerCase().includes(q);
-          if (!matchName && !matchDesc) return false;
+          return h.name?.toLowerCase().includes(q) || h.description?.toLowerCase().includes(q);
         }
         return true;
       })
-      .sort((a, b) => parseHolidayDate(a.date) - parseHolidayDate(b.date));
+      .sort((a, b) => parseDate(a.date) - parseDate(b.date));
   }, [rawItems, categoryFilter, searchQuery]);
 
   const upcomingList = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return rawItems
-      .filter((h) => parseHolidayDate(h.date) >= today)
-      .sort((a, b) => parseHolidayDate(a.date) - parseHolidayDate(b.date));
+    const today = new Date().setHours(0, 0, 0, 0);
+    return rawItems.filter((h) => parseDate(h.date) >= today).sort((a, b) => parseDate(a.date) - parseDate(b.date));
   }, [rawItems]);
 
   const nextHoliday = upcomingList[0] || null;
 
-  const stats = useMemo(() => {
-    const total = rawItems.length;
-    const publicCount = rawItems.filter((h) => h.type === 'public').length;
-    const companyCount = rawItems.filter((h) => h.type === 'company').length;
-    const optionalCount = rawItems.filter((h) => h.type === 'optional').length;
-    const longWeekends = rawItems.filter((h) => isLongWeekend(h.date)).length;
-    return { total, publicCount, companyCount, optionalCount, longWeekends, upcomingCount: upcomingList.length };
-  }, [rawItems, upcomingList]);
+  const stats = useMemo(() => ({
+    total: rawItems.length,
+    publicCount: rawItems.filter((h) => h.type === 'public').length,
+    companyCount: rawItems.filter((h) => h.type === 'company').length,
+    optionalCount: rawItems.filter((h) => h.type === 'optional').length,
+    longWeekends: rawItems.filter((h) => isLongWeekend(h.date)).length,
+    upcomingCount: upcomingList.length,
+  }), [rawItems, upcomingList]);
 
-  // Group items by month for grid view
   const monthsGrouped = useMemo(() => {
-    const groups = {};
-    MONTH_NAMES.forEach((_, idx) => {
-      groups[idx] = [];
-    });
-    items.forEach((h) => {
-      const d = parseHolidayDate(h.date);
-      const m = d.getMonth();
-      if (groups[m]) {
-        groups[m].push(h);
-      }
-    });
+    const groups = Array.from({ length: 12 }, () => []);
+    items.forEach((h) => groups[parseDate(h.date).getMonth()].push(h));
     return groups;
   }, [items]);
 
@@ -139,22 +108,13 @@ export default function Holidays() {
 
   const openEdit = (h) => {
     setEditing(h);
-    setForm({
-      name: h.name,
-      date: fmtDateInput(h.date),
-      type: h.type || 'public',
-      description: h.description || '',
-    });
+    setForm({ name: h.name, date: fmtDateInput(h.date), type: h.type || 'public', description: h.description || '' });
     setModal(true);
   };
 
   const handleSave = async (e) => {
     e.preventDefault();
-    if (!form.name || !form.date) {
-      toast.error('Holiday name and date are required');
-      return;
-    }
-
+    if (!form.name || !form.date) return toast.error('Holiday name and date are required');
     setSaving(true);
     try {
       if (editing) {
@@ -187,102 +147,62 @@ export default function Holidays() {
     }
   };
 
-  // Table columns definition for DataTable
   const tableColumns = [
     {
-      header: 'Holiday Date',
-      key: 'date',
-      minWidth: 170,
-      render: (h) => {
-        const d = parseHolidayDate(h.date);
-        const weekday = d.toLocaleDateString('en-US', { weekday: 'short' });
-        return (
-          <div className="flex items-center gap-2">
-            <DateBadge date={h.date} />
-            <span className="text-xs muted font-mono font-medium">({weekday})</span>
-          </div>
-        );
-      },
-    },
-    {
-      header: 'Holiday Name & Context',
-      key: 'name',
-      minWidth: 240,
+      header: 'Holiday Date', key: 'date', minWidth: 170,
       render: (h) => (
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="font-semi text-sm">{h.name}</span>
-            {isLongWeekend(h.date) && (
-              <span className="holiday-weekend-tag" title="3-Day Weekend">
-                <CalendarRange size={10} /> 3-Day Weekend
-              </span>
-            )}
-          </div>
-          {h.description && (
-            <p className="text-xs muted mt-1 truncate" style={{ maxWidth: 360 }}>
-              {h.description}
-            </p>
-          )}
+        <div className="flex items-center gap-2">
+          <DateBadge date={h.date} />
+          <span className="text-xs muted font-mono font-medium">({parseDate(h.date).toLocaleDateString('en-US', { weekday: 'short' })})</span>
         </div>
       ),
     },
     {
-      header: 'Category',
-      key: 'type',
-      minWidth: 150,
+      header: 'Holiday Name & Context', key: 'name', minWidth: 240,
+      render: (h) => (
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="font-semi text-sm">{h.name}</span>
+            {isLongWeekend(h.date) && <span className="holiday-weekend-tag"><CalendarRange size={10} /> 3-Day Weekend</span>}
+          </div>
+          {h.description && <p className="text-xs muted mt-1 truncate" style={{ maxWidth: 360 }}>{h.description}</p>}
+        </div>
+      ),
+    },
+    {
+      header: 'Category', key: 'type', minWidth: 150,
       render: (h) => {
         const cfg = TYPE_CONFIG[h.type] || TYPE_CONFIG.public;
         return <Badge color={cfg.color} dot={false}>{cfg.label}</Badge>;
       },
     },
     {
-      header: 'Timeline',
-      key: 'status',
-      minWidth: 130,
+      header: 'Timeline', key: 'status', minWidth: 130,
       render: (h) => {
         const diff = getDaysUntil(h.date);
-        if (diff === 0) {
-          return <Badge color="green">Today</Badge>;
-        } else if (diff === 1) {
-          return <Badge color="blue">Tomorrow</Badge>;
-        } else if (diff > 1) {
-          return <span className="text-xs muted font-mono font-medium">In {diff} days</span>;
-        }
+        if (diff === 0) return <Badge color="green">Today</Badge>;
+        if (diff === 1) return <Badge color="blue">Tomorrow</Badge>;
+        if (diff > 1) return <span className="text-xs muted font-mono font-medium">In {diff} days</span>;
         return <span className="text-xs muted font-mono">Passed</span>;
       },
     },
-    ...(canEdit
-      ? [
-          {
-            header: 'Actions',
-            key: 'actions',
-            align: 'right',
-            minWidth: 100,
-            render: (h) => (
-              <div className="table-actions-group">
-                <IconButton
-                  icon={Pencil}
-                  variant="ghost"
-                  size={14}
-                  onClick={() => openEdit(h)}
-                  title="Edit holiday"
-                />
-                <IconButton
-                  icon={Trash2}
-                  variant="ghost"
-                  size={14}
-                  onClick={() => setToDelete(h)}
-                  title="Delete holiday"
-                  style={{ color: 'var(--red)' }}
-                />
-              </div>
-            ),
-          },
-        ]
-      : []),
+    ...(canEdit ? [{
+      header: 'Actions', key: 'actions', align: 'right', minWidth: 100,
+      render: (h) => (
+        <div className="table-actions-group">
+          <IconButton icon={Pencil} variant="ghost" size={14} onClick={() => openEdit(h)} title="Edit holiday" />
+          <IconButton icon={Trash2} variant="ghost" size={14} onClick={() => setToDelete(h)} title="Delete holiday" style={{ color: 'var(--red)' }} />
+        </div>
+      ),
+    }] : []),
   ];
 
-  const hasActiveFilters = Boolean(categoryFilter !== 'all' || searchQuery);
+  const metrics = [
+    { label: `Total Holidays (${year})`, value: stats.total, icon: Calendar, color: 'var(--text-3)', meta: 'Official paid holidays across calendar' },
+    { label: 'Upcoming Holidays', value: stats.upcomingCount, icon: Clock, color: 'var(--accent)', meta: 'Remaining in this calendar year' },
+    { label: 'Long Weekends', value: stats.longWeekends, icon: CalendarRange, color: 'var(--amber-text)', meta: '3-Day weekend breaks (Fri/Mon)' },
+    { label: 'Public vs Company', value: `${stats.publicCount} Pub / ${stats.companyCount} Co`, icon: CalendarDays, color: 'var(--purple-text)', meta: 'Categorized observances' },
+  ];
 
   return (
     <>
@@ -291,142 +211,62 @@ export default function Holidays() {
         subtitle={`Annual company and national holiday schedule for ${year}`}
         actions={
           <div className="flex items-center gap-2">
-            <Select
-              value={year}
-              onChange={(e) => setYear(Number(e.target.value))}
-              style={{ minWidth: 110, height: 34 }}
-            >
-              {YEARS.map((y) => (
-                <option key={y} value={y}>
-                  Year {y}
-                </option>
-              ))}
+            <Select value={year} onChange={(e) => setYear(Number(e.target.value))} style={{ minWidth: 110, height: 34 }}>
+              {YEARS.map((y) => <option key={y} value={y}>Year {y}</option>)}
             </Select>
-
-            {canEdit && (
-              <Button icon={Plus} onClick={openAdd}>
-                Add Holiday
-              </Button>
-            )}
+            {canEdit && <Button icon={Plus} onClick={openAdd}>Add Holiday</Button>}
           </div>
         }
       />
 
-      {/* KPI Metric Strip */}
+      {/* Metrics */}
       <div className="metric-strip">
-        <div className="metric-card">
-          <div className="metric-header">
-            <span>Total Holidays ({year})</span>
-            <Calendar size={15} style={{ color: 'var(--text-3)' }} />
+        {metrics.map((m, idx) => (
+          <div key={idx} className="metric-card">
+            <div className="metric-header">
+              <span>{m.label}</span>
+              <m.icon size={15} style={{ color: m.color }} />
+            </div>
+            <div className="metric-value font-mono" style={{ color: m.color, fontSize: typeof m.value === 'string' ? 18 : undefined }}>
+              {m.value}
+            </div>
+            <div className="metric-meta"><span>{m.meta}</span></div>
           </div>
-          <div className="metric-value font-mono">{stats.total}</div>
-          <div className="metric-meta">
-            <span>Official paid holidays across calendar</span>
-          </div>
-        </div>
-
-        <div className="metric-card">
-          <div className="metric-header">
-            <span>Upcoming Holidays</span>
-            <Clock size={15} style={{ color: 'var(--accent)' }} />
-          </div>
-          <div className="metric-value font-mono" style={{ color: 'var(--accent)' }}>
-            {stats.upcomingCount}
-          </div>
-          <div className="metric-meta">
-            <span>Remaining in this calendar year</span>
-          </div>
-        </div>
-
-        <div className="metric-card">
-          <div className="metric-header">
-            <span>Long Weekends</span>
-            <CalendarRange size={15} style={{ color: 'var(--amber-text)' }} />
-          </div>
-          <div className="metric-value font-mono" style={{ color: 'var(--amber-text)' }}>
-            {stats.longWeekends}
-          </div>
-          <div className="metric-meta">
-            <span>3-Day weekend breaks (Fri/Mon)</span>
-          </div>
-        </div>
-
-        <div className="metric-card">
-          <div className="metric-header">
-            <span>Public vs Company</span>
-            <CalendarDays size={15} style={{ color: 'var(--purple-text)' }} />
-          </div>
-          <div className="metric-value font-mono" style={{ fontSize: 20 }}>
-            {stats.publicCount} <span className="text-xs muted font-normal">Pub</span> / {stats.companyCount} <span className="text-xs muted font-normal">Co</span>
-          </div>
-          <div className="metric-meta">
-            <span>Categorized observances</span>
-          </div>
-        </div>
+        ))}
       </div>
 
-      {/* Hero Banner for Next Upcoming Holiday */}
+      {/* Next Upcoming Holiday Banner */}
       {nextHoliday && (
         <div className="holiday-hero-banner">
           <div className="flex items-center gap-3">
-            <div
-              style={{
-                width: 44,
-                height: 44,
-                borderRadius: 'var(--radius)',
-                background: 'var(--accent-subtle)',
-                border: '1px solid var(--accent-border)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'var(--accent)',
-                flexShrink: 0,
-              }}
-            >
+            <div style={{ width: 44, height: 44, borderRadius: 'var(--radius)', background: 'var(--accent-subtle)', border: '1px solid var(--accent-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent)', flexShrink: 0 }}>
               <Calendar size={22} />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="holiday-next-pill">
-                  <Clock size={11} /> Next Holiday
-                </span>
-                {isLongWeekend(nextHoliday.date) && (
-                  <span className="holiday-weekend-tag">
-                    <CalendarRange size={10} /> 3-Day Weekend
-                  </span>
-                )}
+                <span className="holiday-next-pill"><Clock size={11} /> Next Holiday</span>
+                {isLongWeekend(nextHoliday.date) && <span className="holiday-weekend-tag"><CalendarRange size={10} /> 3-Day Weekend</span>}
               </div>
-              <div className="font-bold text-base mt-1" style={{ color: 'var(--text)' }}>
-                {nextHoliday.name}
-              </div>
+              <div className="font-bold text-base mt-1" style={{ color: 'var(--text)' }}>{nextHoliday.name}</div>
               <div className="text-xs muted">
-                {fmtDate(nextHoliday.date)} (
-                {parseHolidayDate(nextHoliday.date).toLocaleDateString('en-US', { weekday: 'long' })})
+                {fmtDate(nextHoliday.date)} ({parseDate(nextHoliday.date).toLocaleDateString('en-US', { weekday: 'long' })})
                 {nextHoliday.description ? ` · ${nextHoliday.description}` : ''}
               </div>
             </div>
           </div>
-
-          <div>
-            {(() => {
-              const diff = getDaysUntil(nextHoliday.date);
-              return (
-                <div className="text-right">
-                  <div
-                    className="font-mono font-bold"
-                    style={{ fontSize: 18, color: 'var(--accent)' }}
-                  >
-                    {diff === 0 ? 'Today' : diff === 1 ? 'Tomorrow' : `In ${diff} Days`}
-                  </div>
-                  <div className="text-xs muted">Official Paid Holiday</div>
-                </div>
-              );
-            })()}
+          <div className="text-right">
+            <div className="font-mono font-bold" style={{ fontSize: 18, color: 'var(--accent)' }}>
+              {(() => {
+                const diff = getDaysUntil(nextHoliday.date);
+                return diff === 0 ? 'Today' : diff === 1 ? 'Tomorrow' : `In ${diff} Days`;
+              })()}
+            </div>
+            <div className="text-xs muted">Official Paid Holiday</div>
           </div>
         </div>
       )}
 
-      {/* Category Tabs & View Switcher */}
+      {/* Controls & Filter Bar */}
       <div className="filter-bar-enterprise">
         <div className="filter-row-top">
           <Segment
@@ -439,25 +279,12 @@ export default function Holidays() {
               { value: 'optional', label: 'Restricted / Optional', count: stats.optionalCount },
             ]}
           />
-
           <div className="segment" style={{ flexShrink: 0 }}>
-            <button
-              type="button"
-              className={`segment-btn ${viewMode === 'grid' ? 'active' : ''}`}
-              onClick={() => setViewMode('grid')}
-              title="Visual Month Cards Grid"
-            >
-              <LayoutGrid size={14} />
-              <span>Grid</span>
+            <button type="button" className={`segment-btn ${viewMode === 'grid' ? 'active' : ''}`} onClick={() => setViewMode('grid')}>
+              <LayoutGrid size={14} /><span>Grid</span>
             </button>
-            <button
-              type="button"
-              className={`segment-btn ${viewMode === 'table' ? 'active' : ''}`}
-              onClick={() => setViewMode('table')}
-              title="Detailed Table View"
-            >
-              <List size={14} />
-              <span>Table</span>
+            <button type="button" className={`segment-btn ${viewMode === 'table' ? 'active' : ''}`} onClick={() => setViewMode('table')}>
+              <List size={14} /><span>Table</span>
             </button>
           </div>
         </div>
@@ -465,52 +292,25 @@ export default function Holidays() {
         <div className="filter-row-controls">
           <div className="input-icon filter-search-box">
             <Search size={15} />
-            <input
-              type="text"
-              className="input"
-              placeholder="Search holiday by name, description, or keyword…"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
+            <input type="text" className="input" placeholder="Search holiday by name, description, or keyword…" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
           </div>
-
-          {hasActiveFilters && (
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm text-xs text-3"
-              onClick={() => {
-                setCategoryFilter('all');
-                setSearchQuery('');
-              }}
-            >
-              <RotateCcw size={13} />
-              Reset Filters
+          {(categoryFilter !== 'all' || searchQuery) && (
+            <button type="button" className="btn btn-ghost btn-sm text-xs text-3" onClick={() => { setCategoryFilter('all'); setSearchQuery(''); }}>
+              <RotateCcw size={13} /> Reset Filters
             </button>
           )}
         </div>
       </div>
 
-      {/* Main Content: Visual Grid or DataTable */}
+      {/* Views */}
       {viewMode === 'table' ? (
-        <DataTable
-          columns={tableColumns}
-          data={items}
-          loading={loading}
-          keyField="_id"
-          emptyTitle={`No holidays found for ${year}`}
-          emptyMessage="Try clearing your filter or search query to view all holidays."
-        />
+        <DataTable columns={tableColumns} data={items} loading={loading} keyField="_id" emptyTitle={`No holidays found for ${year}`} emptyMessage="Try clearing your filter or search query to view all holidays." />
       ) : loading ? (
         <div className="holiday-grid">
-          {[1, 2, 3, 4, 5, 6].map((k) => (
-            <div key={k} className="holiday-month-card" style={{ minHeight: 160 }}>
-              <div className="holiday-month-header">
-                <div className="skeleton" style={{ width: 80, height: 14 }} />
-              </div>
-              <div className="holiday-list">
-                <div className="skeleton" style={{ width: '100%', height: 46 }} />
-                <div className="skeleton" style={{ width: '100%', height: 46 }} />
-              </div>
+          {[1, 2, 3, 4].map((k) => (
+            <div key={k} className="holiday-month-card" style={{ minHeight: 140 }}>
+              <div className="holiday-month-header"><div className="skeleton" style={{ width: 80, height: 14 }} /></div>
+              <div className="holiday-list"><div className="skeleton" style={{ width: '100%', height: 46 }} /></div>
             </div>
           ))}
         </div>
@@ -520,93 +320,44 @@ export default function Holidays() {
             icon={CalendarDays}
             title={`No holidays scheduled for ${year}`}
             message={searchQuery ? 'No holidays match your search query.' : 'Add company and public holidays to inform team leave planning.'}
-            action={
-              canEdit && (
-                <Button variant="secondary" icon={Plus} onClick={openAdd}>
-                  Add Holiday
-                </Button>
-              )
-            }
+            action={canEdit && <Button variant="secondary" icon={Plus} onClick={openAdd}>Add Holiday</Button>}
           />
         </Card>
       ) : (
         <div className="holiday-grid">
-          {MONTH_NAMES.map((monthName, monthIndex) => {
-            const monthHolidays = monthsGrouped[monthIndex] || [];
-            if (monthHolidays.length === 0) return null;
-
+          {MONTH_NAMES.map((mName, mIdx) => {
+            const mHolidays = monthsGrouped[mIdx];
+            if (!mHolidays?.length) return null;
             return (
-              <div key={monthName} className="holiday-month-card">
+              <div key={mName} className="holiday-month-card">
                 <div className="holiday-month-header">
-                  <span>{monthName} {year}</span>
-                  <span className="text-xs muted font-mono">
-                    {monthHolidays.length} {monthHolidays.length === 1 ? 'day' : 'days'}
-                  </span>
+                  <span>{mName} {year}</span>
+                  <span className="text-xs muted font-mono">{mHolidays.length} {mHolidays.length === 1 ? 'day' : 'days'}</span>
                 </div>
-
                 <div className="holiday-list">
-                  {monthHolidays.map((h) => {
-                    const d = parseHolidayDate(h.date);
-                    const dayNum = d.getDate();
-                    const weekday = d.toLocaleDateString('en-US', { weekday: 'short' });
+                  {mHolidays.map((h) => {
+                    const d = parseDate(h.date);
                     const isPassed = d < new Date(now.toDateString());
-                    const longWknd = isLongWeekend(h.date);
                     const cfg = TYPE_CONFIG[h.type] || TYPE_CONFIG.public;
-
                     return (
-                      <div
-                        key={h._id}
-                        className="holiday-item"
-                        style={{ opacity: isPassed ? 0.65 : 1 }}
-                      >
+                      <div key={h._id} className="holiday-item" style={{ opacity: isPassed ? 0.65 : 1 }}>
                         <div className="holiday-item-date">
-                          <span className="holiday-item-day">{dayNum}</span>
-                          <span className="holiday-item-month">{weekday}</span>
+                          <span className="holiday-item-day">{d.getDate()}</span>
+                          <span className="holiday-item-month">{d.toLocaleDateString('en-US', { weekday: 'short' })}</span>
                         </div>
-
                         <div className="holiday-item-content">
-                          <div
-                            className="holiday-item-title"
-                            title={h.name}
-                          >
-                            {h.name}
-                          </div>
+                          <div className="holiday-item-title" title={h.name}>{h.name}</div>
                           <div className="holiday-item-badges">
-                            <span
-                              className="holiday-cat-pill"
-                              style={{
-                                background: cfg.bg,
-                                color: cfg.text,
-                                border: `1px solid ${cfg.border}`,
-                              }}
-                            >
+                            <span className="holiday-cat-pill" style={{ background: cfg.bg, color: cfg.text, border: `1px solid ${cfg.border}` }}>
                               {cfg.label}
                             </span>
-                            {longWknd && (
-                              <span className="holiday-weekend-tag">
-                                <CalendarRange size={9} /> 3-Day Wknd
-                              </span>
-                            )}
+                            {isLongWeekend(h.date) && <span className="holiday-weekend-tag"><CalendarRange size={9} /> 3-Day Wknd</span>}
                           </div>
                         </div>
-
                         {canEdit && (
                           <div className="holiday-item-actions">
-                            <IconButton
-                              icon={Pencil}
-                              variant="ghost"
-                              size={13}
-                              onClick={() => openEdit(h)}
-                              title="Edit"
-                            />
-                            <IconButton
-                              icon={Trash2}
-                              variant="ghost"
-                              size={13}
-                              onClick={() => setToDelete(h)}
-                              title="Delete"
-                              style={{ color: 'var(--red)' }}
-                            />
+                            <IconButton icon={Pencil} variant="ghost" size={13} onClick={() => openEdit(h)} title="Edit" />
+                            <IconButton icon={Trash2} variant="ghost" size={13} onClick={() => setToDelete(h)} title="Delete" style={{ color: 'var(--red)' }} />
                           </div>
                         )}
                       </div>
@@ -619,7 +370,7 @@ export default function Holidays() {
         </div>
       )}
 
-      {/* Add / Edit Holiday Modal */}
+      {/* Modal */}
       {modal && (
         <Modal
           open={modal}
@@ -628,77 +379,38 @@ export default function Holidays() {
           subtitle="Configure company-wide paid non-working day"
           footer={
             <>
-              <Button variant="secondary" onClick={() => setModal(false)} disabled={saving}>
-                Cancel
-              </Button>
-              <Button onClick={handleSave} loading={saving}>
-                {editing ? 'Save Changes' : 'Add Holiday'}
-              </Button>
+              <Button variant="secondary" onClick={() => setModal(false)} disabled={saving}>Cancel</Button>
+              <Button onClick={handleSave} loading={saving}>{editing ? 'Save Changes' : 'Add Holiday'}</Button>
             </>
           }
         >
           <form onSubmit={handleSave}>
             <Field label="Holiday Name" required>
-              <Input
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder="e.g. Independence Day, Diwali, New Year's Day"
-                required
-              />
+              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Independence Day, Diwali, New Year's Day" required />
             </Field>
-
             <div className="form-grid-2">
               <Field label="Holiday Date" required>
-                <Input
-                  type="date"
-                  value={form.date}
-                  onChange={(e) => setForm({ ...form, date: e.target.value })}
-                  required
-                />
+                <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} required />
               </Field>
-
               <Field label="Category" required>
-                <Select
-                  value={form.type}
-                  onChange={(e) => setForm({ ...form, type: e.target.value })}
-                >
+                <Select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
                   <option value="public">National / Public Holiday</option>
                   <option value="company">Company Mandatory Off</option>
                   <option value="optional">Restricted / Optional Holiday</option>
                 </Select>
               </Field>
             </div>
-
             {form.date && (
-              <div
-                className="p-3 mb-3 flex items-center justify-between"
-                style={{
-                  background: 'var(--bg-subtle)',
-                  borderRadius: 'var(--radius-xs)',
-                  border: '1px solid var(--border)',
-                  padding: '10px 12px',
-                }}
-              >
+              <div className="p-3 mb-3 flex items-center justify-between" style={{ background: 'var(--bg-subtle)', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border)', padding: '10px 12px' }}>
                 <div className="flex items-center gap-2 text-xs">
                   <CheckCircle2 size={14} style={{ color: 'var(--green-text)' }} />
-                  <span>
-                    Falls on <strong>{parseHolidayDate(form.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</strong>
-                  </span>
+                  <span>Falls on <strong>{parseDate(form.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</strong></span>
                 </div>
-                {isLongWeekend(form.date) && (
-                  <span className="holiday-weekend-tag">
-                    <CalendarRange size={11} /> 3-Day Weekend
-                  </span>
-                )}
+                {isLongWeekend(form.date) && <span className="holiday-weekend-tag"><CalendarRange size={11} /> 3-Day Weekend</span>}
               </div>
             )}
-
             <Field label="Description / Notes">
-              <Input
-                value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value })}
-                placeholder="Brief information or guidelines for employees…"
-              />
+              <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Brief information or guidelines for employees…" />
             </Field>
           </form>
         </Modal>

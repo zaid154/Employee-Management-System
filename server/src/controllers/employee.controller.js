@@ -12,7 +12,6 @@ import {
   deleteMediaFromCloudinary,
 } from '../services/cloudinary.service.js';
 
-/** Generate sequential employee id, e.g. EMP0007. */
 export async function nextEmployeeId() {
   const last = await Employee.findOne({ employeeId: /^EMP\d+$/ })
     .sort({ employeeId: -1 })
@@ -22,18 +21,21 @@ export async function nextEmployeeId() {
   return `EMP${String(lastNum + 1).padStart(4, '0')}`;
 }
 
+function checkOwnerOrPrivileged(employee, user) {
+  const isOwner = String(employee._id) === String(ownEmployeeId(user));
+  if (!isPrivileged(user) && !isOwner) throw ApiError.forbidden();
+  return isOwner;
+}
+
 /** GET /api/employees — list with search, filters, pagination. */
 export const listEmployees = asyncHandler(async (req, res) => {
   const { search, department, status, page = 1, limit = 12, sort = '-createdAt' } = req.query;
   const filter = {};
 
-  // Scope: managers see their team; employees see only themselves.
   if (!isPrivileged(req.user)) {
-    if (req.user.role === ROLES.MANAGER) {
-      filter._id = { $in: await teamEmployeeIds(req.user) };
-    } else {
-      filter._id = ownEmployeeId(req.user);
-    }
+    filter._id = req.user.role === ROLES.MANAGER
+      ? { $in: await teamEmployeeIds(req.user) }
+      : ownEmployeeId(req.user);
   }
 
   if (search) filter.$text = { $search: search };
@@ -54,14 +56,11 @@ export const listEmployees = asyncHandler(async (req, res) => {
     Employee.countDocuments(filter),
   ]);
 
-  // Mask sensitive bank account for ordinary non-privileged users
   if (!isPrivileged(req.user)) {
     const ownId = String(ownEmployeeId(req.user));
     items.forEach((item) => {
-      if (String(item._id) !== ownId) {
-        if (item.bank?.accountNumber) {
-          item.bank.accountNumber = `****${item.bank.accountNumber.slice(-4)}`;
-        }
+      if (String(item._id) !== ownId && item.bank?.accountNumber) {
+        item.bank.accountNumber = `****${item.bank.accountNumber.slice(-4)}`;
       }
     });
   }
@@ -83,16 +82,13 @@ export const getEmployee = asyncHandler(async (req, res) => {
     .lean({ virtuals: true });
   if (!employee) throw ApiError.notFound('Employee not found');
 
-  // Access control
   if (!isPrivileged(req.user)) {
-    const allowed =
-      req.user.role === ROLES.MANAGER
-        ? (await teamEmployeeIds(req.user)).includes(String(employee._id))
-        : ownEmployeeId(req.user) === String(employee._id);
+    const allowed = req.user.role === ROLES.MANAGER
+      ? (await teamEmployeeIds(req.user)).includes(String(employee._id))
+      : ownEmployeeId(req.user) === String(employee._id);
     if (!allowed) throw ApiError.forbidden();
   }
 
-  // Data Privacy: Only Admin, HR, and the employee themselves may view full salary and bank
   const isOwner = String(employee._id) === String(ownEmployeeId(req.user));
   if (!isPrivileged(req.user) && !isOwner) {
     delete employee.salary;
@@ -106,8 +102,7 @@ export const getEmployee = asyncHandler(async (req, res) => {
 
 /** POST /api/employees */
 export const createEmployee = asyncHandler(async (req, res) => {
-  const body = { ...req.body };
-  const { createAccount, role, password, ...employeeData } = body;
+  const { createAccount, role, password, ...employeeData } = req.body;
 
   const dept = await Department.findById(employeeData.department);
   if (!dept) throw ApiError.badRequest('Selected department does not exist');
@@ -117,7 +112,6 @@ export const createEmployee = asyncHandler(async (req, res) => {
 
   const employee = await Employee.create(employeeData);
 
-  // Optionally create a login account tied to this employee.
   if (createAccount) {
     if (!password) {
       await employee.deleteOne();
@@ -156,7 +150,6 @@ export const updateEmployee = asyncHandler(async (req, res) => {
   }).populate('department', 'name code');
   if (!employee) throw ApiError.notFound('Employee not found');
 
-  // Keep linked user's display name/email in sync
   if (employee.user && (updates.firstName || updates.lastName || updates.email || updates.phone)) {
     await User.findByIdAndUpdate(employee.user, {
       name: employee.fullName,
@@ -175,20 +168,16 @@ export const deleteEmployee = asyncHandler(async (req, res) => {
 
   if (employee.user) await User.findByIdAndDelete(employee.user);
   await employee.deleteOne();
-
   res.json({ success: true, message: 'Employee removed' });
 });
 
 /** GET /api/employees/options */
 export const employeeOptions = asyncHandler(async (req, res) => {
   const filter = { status: { $nin: ['resigned', 'terminated'] } };
-
   if (!isPrivileged(req.user)) {
-    if (req.user.role === ROLES.MANAGER) {
-      filter._id = { $in: await teamEmployeeIds(req.user) };
-    } else {
-      filter._id = ownEmployeeId(req.user);
-    }
+    filter._id = req.user.role === ROLES.MANAGER
+      ? { $in: await teamEmployeeIds(req.user) }
+      : ownEmployeeId(req.user);
   }
 
   const employees = await Employee.find(filter)
@@ -198,17 +187,12 @@ export const employeeOptions = asyncHandler(async (req, res) => {
   res.json({ success: true, data: employees });
 });
 
-/* ============================================================
-   EMPLOYEE ONBOARDING & REGISTRATION APPROVAL WORKFLOW
-   ============================================================ */
-
 /** GET /api/employees/pending-registrations — Admin/HR only */
 export const listPendingRegistrations = asyncHandler(async (_req, res) => {
   const pendingUsers = await User.find({ status: 'PENDING_ADMIN_APPROVAL' })
     .select('name email phone role status createdAt updatedAt')
     .sort('-updatedAt')
     .lean();
-
   res.json({ success: true, data: pendingUsers });
 });
 
@@ -239,51 +223,38 @@ export const approveRegistration = asyncHandler(async (req, res) => {
   const firstName = nameParts[0] || 'Team';
   const lastName = nameParts.slice(1).join(' ') || 'Member';
 
-  // Check if an employee already exists with this email
+  const employeeData = {
+    employeeId: finalEmpId,
+    firstName,
+    lastName,
+    email: user.email,
+    phone: user.phone || '',
+    designation,
+    department: dept._id,
+    employmentType,
+    status: 'active',
+    dateOfJoining,
+    salary: salary || { basic: 0, hra: 0, allowances: 0, pf: 0, professionalTax: 0 },
+    bank: bank || { accountName: '', accountNumber: '', bankName: '', ifsc: '' },
+    user: user._id,
+  };
+
   let employee = await Employee.findOne({ email: user.email });
   if (employee) {
-    employee.employeeId = finalEmpId;
-    employee.firstName = firstName;
-    employee.lastName = lastName;
-    employee.phone = user.phone || employee.phone;
-    employee.designation = designation;
-    employee.department = dept._id;
-    employee.employmentType = employmentType;
-    employee.status = 'active';
-    employee.dateOfJoining = dateOfJoining;
-    if (salary) employee.salary = salary;
-    if (bank) employee.bank = bank;
-    employee.user = user._id;
+    Object.assign(employee, employeeData);
     await employee.save();
   } else {
-    employee = await Employee.create({
-      employeeId: finalEmpId,
-      firstName,
-      lastName,
-      email: user.email,
-      phone: user.phone || '',
-      designation,
-      department: dept._id,
-      employmentType,
-      status: 'active',
-      dateOfJoining,
-      salary: salary || { basic: 0, hra: 0, allowances: 0, pf: 0, professionalTax: 0 },
-      bank: bank || { accountName: '', accountNumber: '', bankName: '', ifsc: '' },
-      leaveBalance: new Map(Object.entries(DEFAULT_LEAVE_BALANCE)),
-      user: user._id,
-    });
+    employeeData.leaveBalance = new Map(Object.entries(DEFAULT_LEAVE_BALANCE));
+    employee = await Employee.create(employeeData);
   }
 
-  // Activate User credentials and assign verified Role
   user.role = role;
   user.status = 'ACTIVE';
   user.employee = employee._id;
   user.rejectionReason = '';
   await user.save();
 
-  console.log(`[ONBOARDING] User ${user.email} successfully onboarded as ${user.role} (${employee.employeeId})`);
-
-  // Dispatch Welcome/Activation Email
+  console.log(`[ONBOARDING] User ${user.email} approved as ${user.role} (${employee.employeeId})`);
   await sendApprovalEmail(user.email, user.name, user.role);
 
   const populated = await Employee.findById(employee._id).populate('department', 'name code');
@@ -303,44 +274,26 @@ export const rejectRegistration = asyncHandler(async (req, res) => {
   user.status = 'REJECTED';
   user.rejectionReason = reason;
   await user.save();
-
-  console.log(`[ONBOARDING] User ${user.email} registration rejected. Reason: ${reason}`);
-
   res.json({ success: true, message: 'Registration rejected successfully.' });
 });
-
-/* ============================================================
-   CLOUDINARY MEDIA & DOCUMENT MANAGEMENT WORKFLOW
-   ============================================================ */
 
 /** POST /api/employees/:id/avatar */
 export const uploadAvatar = asyncHandler(async (req, res) => {
   const employee = await Employee.findById(req.params.id);
   if (!employee) throw ApiError.notFound('Employee not found');
-
-  // Permissions: Admin/HR or Owner
-  const isOwner = String(employee._id) === String(ownEmployeeId(req.user));
-  if (!isPrivileged(req.user) && !isOwner) throw ApiError.forbidden();
+  checkOwnerOrPrivileged(employee, req.user);
 
   if (!req.file) throw ApiError.badRequest('No image file provided');
-
-  // Upload to Cloudinary
   const result = await uploadAvatarToCloudinary(req.file.buffer, req.file.originalname);
 
-  // Clean up previous image if exists
-  if (employee.avatarPublicId) {
-    await deleteMediaFromCloudinary(employee.avatarPublicId);
-  }
+  if (employee.avatarPublicId) await deleteMediaFromCloudinary(employee.avatarPublicId);
 
   employee.avatar = result.url;
   employee.avatarPublicId = result.publicId;
   await employee.save();
 
   if (employee.user) {
-    await User.findByIdAndUpdate(employee.user, {
-      avatar: result.url,
-      avatarPublicId: result.publicId,
-    });
+    await User.findByIdAndUpdate(employee.user, { avatar: result.url, avatarPublicId: result.publicId });
   }
 
   res.json({ success: true, message: 'Avatar updated successfully', avatar: result.url });
@@ -350,16 +303,13 @@ export const uploadAvatar = asyncHandler(async (req, res) => {
 export const uploadDocument = asyncHandler(async (req, res) => {
   const employee = await Employee.findById(req.params.id);
   if (!employee) throw ApiError.notFound('Employee not found');
-
-  const isOwner = String(employee._id) === String(ownEmployeeId(req.user));
-  if (!isPrivileged(req.user) && !isOwner) throw ApiError.forbidden();
+  checkOwnerOrPrivileged(employee, req.user);
 
   if (!req.file) throw ApiError.badRequest('No document file provided');
   const { documentType = 'other', title } = req.body;
-
   const result = await uploadDocumentToCloudinary(req.file.buffer, req.file.originalname);
 
-  const docItem = {
+  employee.documents.push({
     documentType,
     title: title || req.file.originalname,
     fileName: req.file.originalname,
@@ -369,16 +319,13 @@ export const uploadDocument = asyncHandler(async (req, res) => {
     mimeType: req.file.mimetype,
     status: 'pending',
     uploadedAt: new Date(),
-  };
-
-  employee.documents.push(docItem);
+  });
   await employee.save();
 
-  const addedDoc = employee.documents[employee.documents.length - 1];
   res.status(201).json({
     success: true,
     message: 'Document uploaded for verification',
-    data: addedDoc,
+    data: employee.documents[employee.documents.length - 1],
   });
 });
 
@@ -395,33 +342,23 @@ export const verifyDocument = asyncHandler(async (req, res) => {
   doc.adminRemarks = adminRemarks;
   doc.verifiedBy = req.user._id;
   doc.verifiedAt = new Date();
-
   await employee.save();
 
-  res.json({
-    success: true,
-    message: `Document status updated to "${status}"`,
-    data: doc,
-  });
+  res.json({ success: true, message: `Document status updated to "${status}"`, data: doc });
 });
 
 /** DELETE /api/employees/:id/documents/:docId */
 export const deleteDocument = asyncHandler(async (req, res) => {
   const employee = await Employee.findById(req.params.id);
   if (!employee) throw ApiError.notFound('Employee not found');
-
-  const isOwner = String(employee._id) === String(ownEmployeeId(req.user));
-  if (!isPrivileged(req.user) && !isOwner) throw ApiError.forbidden();
+  checkOwnerOrPrivileged(employee, req.user);
 
   const doc = employee.documents.id(req.params.docId);
   if (!doc) throw ApiError.notFound('Document item not found');
 
-  if (doc.filePublicId) {
-    await deleteMediaFromCloudinary(doc.filePublicId);
-  }
+  if (doc.filePublicId) await deleteMediaFromCloudinary(doc.filePublicId);
 
   doc.deleteOne();
   await employee.save();
-
   res.json({ success: true, message: 'Document removed successfully' });
 });
