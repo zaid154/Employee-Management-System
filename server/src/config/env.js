@@ -25,9 +25,9 @@ export const env = {
   nodeEnv: process.env.NODE_ENV || 'development',
   isProd: (process.env.NODE_ENV || 'development') === 'production',
   seedAdmin: {
-    name: process.env.SEED_ADMIN_NAME || 'HR Admin',
-    email: process.env.SEED_ADMIN_EMAIL || 'admin@ems.dev',
-    password: process.env.SEED_ADMIN_PASSWORD || 'Admin@12345',
+    name: process.env.SEED_ADMIN_NAME || 'Mohd Zaid (Admin)',
+    email: process.env.SEED_ADMIN_EMAIL || 'zaidm1323@gmail.com',
+    password: process.env.SEED_ADMIN_PASSWORD || 'Zaid@9999201255',
   },
   // Email / SMTP
   smtp: {

@@ -1,5 +1,11 @@
 # PeoplePay — Enterprise HRMS & Payroll System
 
+[![Live Demo](https://img.shields.io/badge/Live_Portal-ems--pro.vercel.app-2563EB?style=for-the-badge&logo=vercel)](https://ems-pro.vercel.app/)
+[![Author Portfolio](https://img.shields.io/badge/Portfolio-zaid--pro.vercel.app-000000?style=for-the-badge&logo=vercel)](https://zaid-pro.vercel.app/)
+
+> **Live Application**: [https://ems-pro.vercel.app](https://ems-pro.vercel.app)
+> **Author Portfolio**: [https://zaid-pro.vercel.app](https://zaid-pro.vercel.app)
+
 PeoplePay is a full-stack MERN (MongoDB, Express, React 18, Node.js) Human Resource Management and Payroll application designed for corporate workforce operations. It covers the full employee lifecycle: onboarding, identity verification via OTP, attendance tracking, leave workflows, statutory payroll calculation, salary disbursement with transaction reference tracking, and downloadable PDF payslips.
 
 ---

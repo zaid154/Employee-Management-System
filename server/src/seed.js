@@ -189,9 +189,9 @@ async function runSeed() {
   // 3. Login Accounts
   console.log('[4/9] Seeding Core Demo Login Accounts...');
   const adminUser = await User.create({
-    name: env.seedAdmin.name || 'HR Admin',
-    email: env.seedAdmin.email || 'admin@ems.dev',
-    password: env.seedAdmin.password || 'Admin@12345',
+    name: env.seedAdmin.name || 'Mohd Zaid (Admin)',
+    email: env.seedAdmin.email || 'zaidm1323@gmail.com',
+    password: env.seedAdmin.password || 'Zaid@9999201255',
     role: ROLES.ADMIN,
     isVerified: true,
     status: 'ACTIVE',
